@@ -1,8 +1,10 @@
-# Nomes novos: rename_table.csv do mandyoc_jpm. O nome antigo fica no comentário
-# (nomes sem comentário são iguais aos do Mandyoc ou novos neste projeto).
+# New names: docs/rename_table.csv. The comment keeps the old name of Mandyoc
+# (names without a comment are the same as in Mandyoc, or new in this project).
 Base.@kwdef struct ModelParameters
     Nx::Int = 101                              # Nx
     Nz::Int = 31                               # Nz
+    Px::Int = -1                               # Px (ranks in x; -1: chosen by PETSc)
+    Pz::Int = -1                               # Pz
     Lx::Float64 = 1000.0e3                     # Lx
     domain_depth::Float64 = 300.0e3            # depth
     particles_per_element_x::Int = 9           # nx_ppe
@@ -12,7 +14,7 @@ Base.@kwdef struct ModelParameters
     use_runge_kutta_4::Bool = true             # RK4
     periodic_boundary::Bool = false            # periodic_boundary
     boundary_offset::Float64 = 1.0e-7          # epsilon_x
-    advection_stencil_width::Int = 2           # novo: malha só da advecção (ver bug do RK4)
+    advection_stencil_width::Int = 2           # new: mesh used only for advection (see the RK4 bug)
     thermal_time_theta::Float64 = 0.5          # alpha_thermal
     thermal_diffusivity::Float64 = 1.0e-6      # kappa
     thermal_expansion_coefficient::Float64 = 3.28e-5  # alpha_exp_thermo
@@ -25,14 +27,40 @@ Base.@kwdef struct ModelParameters
     temperature_bc_bottom::Bool = true         # bcT_bot
     temperature_bc_left::Bool = false          # bcT_left
     temperature_bc_right::Bool = false         # bcT_right
-    rtol::Float64 = 1.0e-5                     # rtol
+    solver_relative_tolerance::Float64 = 1.0e-5                     # rtol
     mantle_density::Float64 = 3300.0           # RHOM
     uzawa_residual_tolerance::Float64 = 1.0e-4 # denok_min
+    nonlinear_residual_tolerance::Float64 = 1.0e-14  # Xi_min
+    use_nonlinear_method::Bool = false         # WITH_NON_LINEAR
+    use_plasticity::Bool = true                # PLASTICITY
+    rheology_model::Int = 0                    # rheol
+    reference_viscosity::Float64 = 1.0e21      # visco_r
+    max_viscosity::Float64 = 1.0e25            # visc_MAX
+    min_viscosity::Float64 = 1.0e17            # visc_MIN
+    use_viscosity_factor::Bool = true          # geoq_on
+    viscosity_factor_scale::Float64 = 1.0      # escala_viscosidade
+    use_pressure_in_rheology::Bool = true      # pressure_in_rheol
+    constant_rheology_pressure::Float64 = -1.0 # pressure_const (< 0: not used)
+    air_layer_thickness::Float64 = 0.0         # h_air
+    weakening_min::Float64 = 0.05              # weakening_min
+    weakening_max::Float64 = 1.05              # weakening_max
+    sticky_blanket_air::Bool = false           # sticky_blanket_air
+    air_threshold_density::Float64 = 100.0     # air_threshold_density
+    use_strain_healing::Bool = false           # strain_healing
+    strain_healing_rate::Float64 = 3.17e-14    # A_healing (1/s)
+    strain_healing_activation_factor::Float64 = 10.0   # k_healing
+    strain_healing_reference_temperature::Float64 = 0.0 # T0_healing
+    use_shear_heating::Bool = false            # WITH_SHEAR_H
+    shear_heating_scale_factor::Float64 = 1.0  # Xi_shear
+    temperature_difference::Float64 = 1500.0   # Delta_T
+    initial_dynamic_range::Bool = false        # initial_dynamic_range
+    max_time_step::Float64 = 1.0e6             # dt_MAX (years)
+    time_step_subdivision::Float64 = 1.0       # sub_division_time_step
     use_direct_solver::Bool = true             # direct_solver
     free_surface_stabilization::Bool = true    # free_surface_stab
     fssa_theta::Float64 = 0.5                  # theta_FSSA
-    fssa_legacy::Bool = false                  # novo: true repete o termo do C++ (ver docs)
-    harmonic_viscosity_mean::Bool = false      # visc_harmonic_mean
+    fssa_legacy::Bool = false                  # new: true reproduces the term of the C++ code (see docs)
+    use_viscosity_harmonic_mean::Bool = false      # visc_harmonic_mean
     velocity_bc_top_normal::Bool = true        # bcv_top_normal   (true = fixed)
     velocity_bc_top_tangential::Bool = false   # bcv_top_slip
     velocity_bc_bottom_normal::Bool = true     # bcv_bot_normal

@@ -1,12 +1,12 @@
-# van Keken et al. (1997), caso 1a: instabilidade de Rayleigh-Taylor, viscosidade uniforme.
-# julia --project=. test/mpirun.jl N van_keken.jl [nx] [ppe por direção] [t_final adimensional] [dt maximo, s]
+# van Keken et al. (1997), case 1a: Rayleigh-Taylor instability, uniform viscosity.
+# julia --project=. test/mpirun.jl N van_keken.jl [nx] [ppe in each direction] [nondimensional final time] [max. dt, s]
 include("../src/particle_swarm.jl"); include("../src/thermal.jl"); include("../src/stokes.jl")
 using Printf
 function main()
     PETSc.initialize(P); comm = MPI.COMM_WORLD; rank = MPI.Comm_rank(comm)
     n = parse(Int, get(ARGS, 1, "81")); pd = parse(Int, get(ARGS, 2, "6")); tend = parse(Float64, get(ARGS, 3, "300")); dtmax = parse(Float64, get(ARGS, 4, "1.6e12"))
     m = ModelParameters(Nx = n, Nz = n, Lx = 91420.0, domain_depth = 100e3, particles_per_element_x = pd, particles_per_element_z = pd,
-        rtol = 1e-7, uzawa_residual_tolerance = 1e-24, free_surface_stabilization = false, use_runge_kutta_4 = true,
+        solver_relative_tolerance = 1e-7, uzawa_residual_tolerance = 1e-24, free_surface_stabilization = false, use_runge_kutta_4 = true,
         velocity_bc_top_tangential = true, velocity_bc_bottom_tangential = true)
     dv, dT = create_velocity_mesh(m), create_thermal_mesh(m); da = create_advection_mesh(m, dv)
     interface(x) = -80e3 + 2e3 * cospi(x / m.Lx)
@@ -42,7 +42,7 @@ function main()
         t += dt / t0; step += 1
     end
     Np = MPI.Allreduce(Int(LibPETSc.DMSwarmGetLocalSize(P, swarm)), +, comm)
-    rank == 0 && (close(out); @printf("RESULT np=%d malha %d^2 ppe=%d: vrms maximo %.6f em t = %.2f | %d passos, %.1f Uzawa/passo, particulas %d de %d, %.1f s\n",
+    rank == 0 && (close(out); @printf("RESULT np=%d mesh %d^2 ppe=%d: max. vrms %.6f at t = %.2f | %d steps, %.1f Uzawa/step, particles %d of %d, %.1f s\n",
         MPI.Comm_size(comm), n - 1, pd^2, best..., step, its / step, Np, (n - 1)^2 * pd^2, MPI.Wtime() - tic))
     PETSc.finalize(P)
 end

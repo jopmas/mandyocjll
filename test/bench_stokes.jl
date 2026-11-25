@@ -1,11 +1,11 @@
-# Tempo por etapa: julia --project=. test/mpirun.jl N bench_stokes.jl [nx] [opções PETSc, ex. -veloc_mat_mumps_icntl_13 1]
+# Time of each stage: julia --project=. test/mpirun.jl N bench_stokes.jl [nx] [PETSc options, e.g. -veloc_mat_mumps_icntl_13 1]
 include("../src/particle_swarm.jl"); include("../src/thermal.jl"); include("../src/stokes.jl")
 using Printf
 import LinearAlgebra
 function main()
     PETSc.initialize(P; options = ARGS[2:end]); comm = MPI.COMM_WORLD
     n = parse(Int, get(ARGS, 1, "81"))
-    m = ModelParameters(Nx = n, Nz = n, Lx = 91420.0, domain_depth = 100e3, rtol = 1e-7, uzawa_residual_tolerance = 1e-24,
+    m = ModelParameters(Nx = n, Nz = n, Lx = 91420.0, domain_depth = 100e3, solver_relative_tolerance = 1e-7, uzawa_residual_tolerance = 1e-24,
         free_surface_stabilization = false, velocity_bc_top_tangential = true, velocity_bc_bottom_tangential = true)
     dv, dT = create_velocity_mesh(m), create_thermal_mesh(m)
     gt() = LibPETSc.DMCreateGlobalVector(P, dT); gv() = LibPETSc.DMCreateGlobalVector(P, dv)
@@ -25,7 +25,7 @@ function main()
     t_sol = minimum(clock(() -> solve_velocity!(s, s.velocity_rhs_pressure, x)) for _ in 1:20)
     t_mul = minimum(clock(() -> L.MatMult(P, K, x, b)) for _ in 1:20)
     t_dot = minimum(clock(() -> L.VecDot(P, x, x)) for _ in 1:20)
-    MPI.Comm_rank(comm) == 0 && @printf("BENCH np=%d n=%d dof=%d blas=%d | montagem %.1f ms | 1a fatoracao %.1f | fatoracao %.1f | solve %.2f | MatMult %.3f | VecDot %.3f ms\n",
+    MPI.Comm_rank(comm) == 0 && @printf("BENCH np=%d n=%d dof=%d blas=%d | assembly %.1f ms | 1st factorization %.1f | factorization %.1f | solve %.2f | MatMult %.3f | VecDot %.3f ms\n",
         MPI.Comm_size(comm), n, 2n^2, LinearAlgebra.BLAS.get_num_threads(), 1e3 .* (t_asm, t_first, t_fac, t_sol, t_mul, t_dot)...)
     PETSc.finalize(P)
 end

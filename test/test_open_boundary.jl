@@ -1,6 +1,6 @@
 # mpiexec -n N julia --project=. test/test_open_boundary.jl <shim|native>
-# Fluxo uniforme saindo por x = Lx (caso do `break` do RK4): as partículas que saem somem
-# e todas as outras andam exatamente U*t.
+# Uniform flow leaving through x = Lx (case of the `break` in RK4): the particles that leave are
+# removed and all the others move exactly U*t.
 include("../src/particle_swarm.jl")
 function main()
     PETSc.initialize(petsclib); comm = MPI.COMM_WORLD
@@ -20,8 +20,8 @@ function main()
     stay = Set(i for (i, x) in x0 if x + shift <= m.Lx)
     ok = length(I) == length(stay) && Set(I) == stay
     err = maximum(abs(X[p] - x0[I[p]] - shift) for p in eachindex(I))
-    MPI.Comm_rank(comm) == 0 && println("RESULT ", ok && err < 1e-3 ? "OK   " : "FAIL ", location, " borda aberta np=", MPI.Comm_size(comm),
-        " ficaram=", length(I), " esperado=", length(stay), " sairam=", length(I0) - length(I), " erro_x=", err, " m")
+    MPI.Comm_rank(comm) == 0 && println("RESULT ", ok && err < 1e-3 ? "OK   " : "FAIL ", location, " open boundary np=", MPI.Comm_size(comm),
+        " stayed=", length(I), " expected=", length(stay), " left=", length(I0) - length(I), " error_x=", err, " m")
     PETSc.finalize(petsclib)
 end
 main()

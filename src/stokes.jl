@@ -1,12 +1,12 @@
-# Stokes 2D (DMv.cpp, DM1_v.cpp, calc_drho.cpp): elementos Q1-P0 e gradiente conjugado de
-# Uzawa na pressão. Inclua depois de thermal.jl. A pressão do elemento fica no componente 1
-# (u) do nó inferior esquerdo da da_Veloc, como no Mandyoc.
-# As matrizes têm o jacobiano 1/4 que o Mandyoc omite; a solução é a mesma.
+# 2D Stokes (DMv.cpp, DM1_v.cpp, calc_drho.cpp): Q1-P0 elements and Uzawa conjugate gradients on
+# the pressure. Include after thermal.jl. The pressure of an element is stored in component 1 (u)
+# of its lower left node of da_Veloc, as in Mandyoc.
+# The matrices have the 1/4 Jacobian that Mandyoc leaves out; the solution is the same.
 
 struct StokesElement
-    Ke::Matrix{Float64}      # Ke_veloc para viscosidade 1
-    VCe::Vector{Float64}     # VCe: gradiente da pressão
-    VfMe::Matrix{Float64}    # VfMe: força de volume
+    Ke_veloc::Matrix{Float64} # Ke_veloc for unit viscosity
+    VCe::Vector{Float64}     # VCe: pressure gradient
+    VfMe::Matrix{Float64}    # VfMe: body force
 end
 function StokesElement(m, e::ElementMatrices)  # montaKeVeloc_general_2d, montaCeVeloc2d, montafeVeloc2d
     Ke, VCe, VfMe = zeros(8, 8), zeros(8), zeros(8, 4)
@@ -37,7 +37,7 @@ mutable struct StokesSolver{D, V, M, K}
     velocity_ksp::K                      # V_ksp
     velocity_rhs_pressure::V             # Vf_P
     velocity_bc_values::V                # Veloc_0
-    velocity_bc_mask::V                  # Veloc_Cond (1 = livre, 0 = fixo)
+    velocity_bc_mask::V                  # Veloc_Cond (1 = free, 0 = fixed)
     uzawa_preconditioner::V              # Precon
     rk_vec::V; rk_vec2::V; sk_vec::V; gs_vec::V; uk_vec::V; zk_vec::V; zk_vec2::V
     local_velocity::V                    # local_V
@@ -47,12 +47,12 @@ mutable struct StokesSolver{D, V, M, K}
     local_uzawa_preconditioner::V        # local_Precon
     local_viscosity_factor::V            # local_geoq
     local_density_variation::V           # local_dRho
-    local_fssa_density_variation::V      # novo: o C++ usa o dRho da montagem anterior no FSSA
+    local_fssa_density_variation::V      # new: the C++ code uses dRho of the previous assembly in the FSSA
     uzawa_iterations::Int
     uzawa_residual::Float64              # denok
 end
 
-"mask = (i, k) -> (u, w) troca as condições de contorno dos parâmetros."
+"mask = (i, k) -> (u, w) replaces the boundary conditions of the parameters."
 function StokesSolver(m, da_Veloc, da_Thermal, velocity; mask = nothing)   # create_veloc
     gv() = LibPETSc.DMCreateGlobalVector(P, da_Veloc); lv() = LibPETSc.DMCreateLocalVector(P, da_Veloc)
     lt() = LibPETSc.DMCreateLocalVector(P, da_Thermal)
@@ -87,7 +87,7 @@ end
 
 local_row(da) = ((gx, gz, _, gm, _, _) = Int.(LibPETSc.DMDAGetGhostCorners(P, da)); (i, k, c) -> 2((i - gx) + (k - gz) * gm) + c)
 finish_matrix(A) = (LibPETSc.MatAssemblyBegin(P, A, LibPETSc.MAT_FINAL_ASSEMBLY); LibPETSc.MatAssemblyEnd(P, A, LibPETSc.MAT_FINAL_ASSEMBLY))
-function element_nodes(m, ei, ek)        # nós das equações: na borda periódica, Nx no lugar de Nx-1
+function element_nodes(m, ei, ek)        # nodes of the equations: Nx instead of Nx-1 at the periodic boundary
     right = m.periodic_boundary && ei == m.Nx - 2 ? m.Nx : ei + 1
     return ((ei, ek), (right, ek), (ei, ek + 1), (right, ek + 1))
 end
@@ -104,12 +104,12 @@ function assemble_gradient!(s)
     finish_matrix(G)
 end
 
-# Termo do FSSA (Kaus et al., 2010) somado à diagonal dos w do elemento. `density_variation`
-# já é a força de volume (-g*rho), então a força muda de theta*dt*w*d(dRho)/dz.
+# FSSA term (Kaus et al., 2010) added to the diagonal of the w entries of the element. `density_variation`
+# is already the body force (-g*rho), so the force changes by theta*dt*w*d(dRho)/dz.
 function fssa_term(m, d, dt)
     jump = (-d[1] - d[2] + d[3] + d[4]) / 2                         # rho_mean_bottom
-    consistent = m.fssa_theta * dt * jump * element_size_x(m) / 4   # integral nodal: 4 nós, 1/4 cada
-    # C++: theta*dt*jump*g*dx/2, num sistema 4x maior
+    consistent = m.fssa_theta * dt * jump * element_size_x(m) / 4   # nodal integration: 4 nodes, 1/4 each
+    # C++: theta*dt*jump*g*dx/2, in a system that is 4 times larger
     return m.fssa_legacy ? m.fssa_theta * dt * jump * m.gravity_acceleration * element_size_x(m) / 2 / 4 : consistent
 end
 
@@ -142,7 +142,7 @@ function assemble_velocity!(s, velocity, pressure, viscosity_factor, density_var
         Ke, values, rows, free, fe, de = zeros(8, 8), zeros(64), zeros(PInt, 8), zeros(Bool, 8), zeros(8), zeros(4)
         xs, zs = element_ranges(m, s.da_Veloc)
         for ek in zs, ei in xs
-            Ke .= visc[ei, ek] .* el.Ke
+            Ke .= visc[ei, ek] .* el.Ke_veloc
             de[1] = D[ei, ek]; de[2] = D[ei+1, ek]; de[3] = D[ei, ek+1]; de[4] = D[ei+1, ek+1]
             if m.free_surface_stabilization
                 x = fssa_term(m, (D0[ei, ek], D0[ei+1, ek], D0[ei, ek+1], D0[ei+1, ek+1]), dt)
@@ -183,10 +183,10 @@ end
 
 function solve_velocity!(s, b, x)
     LibPETSc.KSPSolve(P, s.velocity_ksp, b, x)
-    Int(LibPETSc.KSPGetConvergedReason(P, s.velocity_ksp)) > 0 || error("KSP da velocidade não convergiu")
+    Int(LibPETSc.KSPGetConvergedReason(P, s.velocity_ksp)) > 0 || error("the velocity KSP did not converge")
 end
 
-"Resolve o Stokes: velocity_next e pressure são atualizados no lugar (veloc_total, caso linear)."
+"Solves Stokes: velocity_next and pressure are updated in place (veloc_total, linear case)."
 function stokes_solve!(s::StokesSolver, velocity_next, pressure, velocity, viscosity_factor, density_variation, dt;
     max_iterations = 400, fssa_density_variation = density_variation)
     assemble_velocity!(s, velocity, pressure, viscosity_factor, density_variation, dt; fssa_density_variation)
@@ -195,13 +195,13 @@ function stokes_solve!(s::StokesSolver, velocity_next, pressure, velocity, visco
     L.KSPSetOperators(P, s.velocity_ksp, K, K)
     L.KSPSetFromOptions(P, s.velocity_ksp)
     L.KSPSetInitialGuessNonzero(P, s.velocity_ksp, L.PETSC_TRUE)
-    L.KSPSetTolerances(P, s.velocity_ksp, s.m.rtol, 1e-50, 1e5, PInt(10000))
+    L.KSPSetTolerances(P, s.velocity_ksp, s.m.solver_relative_tolerance, 1e-50, 1e5, PInt(10000))
     solve_velocity!(s, s.velocity_rhs_pressure, velocity_next)             # K V0 = F
     L.VecPointwiseMult(P, velocity_next, velocity_next, mask)
     L.VecAXPY(P, velocity_next, 1.0, s.velocity_bc_values)
     L.MatMultTranspose(P, G, velocity_next, s.rk_vec2)                     # r0 = G^T V0
     L.VecPointwiseMult(P, s.zk_vec2, M, s.rk_vec2)
-    # 16 = 4^2: o G do Mandyoc é 4x maior, e assim a tolerância tem o mesmo sentido
+    # 16 = 4^2: G is 4 times larger in Mandyoc, so the tolerance has the same meaning
     residual() = 16 * Float64(L.VecDot(P, s.rk_vec2, s.rk_vec2))           # denok
     s.uzawa_residual = residual(); s.uzawa_iterations = 0
     for k in 1:max_iterations-1
@@ -227,11 +227,11 @@ function stokes_solve!(s::StokesSolver, velocity_next, pressure, velocity, visco
         s.uzawa_iterations = k; s.uzawa_residual = residual()
     end
     s.uzawa_residual > s.m.uzawa_residual_tolerance && MPI.Comm_rank(MPI.COMM_WORLD) == 0 &&
-        @warn "Uzawa parou sem atingir a tolerância" s.uzawa_residual
+        @warn "Uzawa stopped before reaching the tolerance" s.uzawa_residual
     return velocity_next
 end
 
-"density_variation (dRho) = a*T - g*rho, com a = alfa*g*rho_manto (calc_drho)."
+"density_variation (dRho) = a*T - g*rho, with a = alpha*g*rho_mantle (calc_drho)."
 function calc_density_variation!(m, density_variation, temperature, density_field)
     a = m.thermal_expansion_coefficient * m.gravity_acceleration * m.mantle_density
     PETSc.with_local_array!(density_variation, temperature, density_field; write = (true, false, false)) do d, T, rho
@@ -239,10 +239,10 @@ function calc_density_variation!(m, density_variation, temperature, density_fiel
     end
 end
 
-"Partículas -> malha (Swarm2Mesh_2d): densidade nos nós, viscosidade média por elemento."
+"Particles -> mesh (Swarm2Mesh_2d): nodal density and mean viscosity of each element."
 function swarm_to_mesh!(m, particle_swarm, da_Thermal, density_field, viscosity_factor, layer_density, layer_viscosity)
     lv() = LibPETSc.DMCreateLocalVector(P, da_Thermal); gv() = LibPETSc.DMCreateGlobalVector(P, da_Thermal)
-    l = (lv(), lv(), lv(), lv()); g = (gv(), gv())                  # rho, peso, visc, contagem
+    l = (lv(), lv(), lv(), lv()); g = (gv(), gv())                  # rho, weight, viscosity, count
     dx, dz = element_size_x(m), element_size_z(m)
     PETSc.with_local_array!(l...) do ra, ca, va, na
         R, W, V, N = local_view(da_Thermal, ra), local_view(da_Thermal, ca), local_view(da_Thermal, va), local_view(da_Thermal, na)
@@ -257,7 +257,7 @@ function swarm_to_mesh!(m, particle_swarm, da_Thermal, density_field, viscosity_
                 for (ii, kk, w) in ((i, k, (1 - rx) * (1 - rz)), (i + 1, k, rx * (1 - rz)), (i, k + 1, (1 - rx) * rz), (i + 1, k + 1, rx * rz))
                     R[ii, kk] += w * rho; W[ii, kk] += w
                 end
-                V[i, k] += m.harmonic_viscosity_mean ? 1 / eta : eta; N[i, k] += 1
+                V[i, k] += m.use_viscosity_harmonic_mean ? 1 / eta : eta; N[i, k] += 1
             end
         end end
     end
@@ -265,9 +265,9 @@ function swarm_to_mesh!(m, particle_swarm, da_Thermal, density_field, viscosity_
         for (a, b) in ((num, g[1]), (den, g[2]))
             LibPETSc.VecZeroEntries(P, b); LibPETSc.DMLocalToGlobal(P, da_Thermal, a, LibPETSc.ADD_VALUES, b)
         end
-        harmonic = out === viscosity_factor && m.harmonic_viscosity_mean
+        harmonic = out === viscosity_factor && m.use_viscosity_harmonic_mean
         PETSc.with_local_array!(out, g[1], g[2]) do o, a, b
-            for n in eachindex(o)                                   # sem partículas: mantém o valor anterior
+            for n in eachindex(o)                                   # no particles: keep the previous value
                 b[n] > 0 && (o[n] = harmonic ? b[n] / a[n] : a[n] / b[n])
             end
         end

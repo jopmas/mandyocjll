@@ -1,5 +1,5 @@
-/* Escreve os dois campos privados que o Mandyoc preenche em createSwarm_2d
- * (dmcell->ops->locatepoints e ->getneighbors). Os callbacks ficam em Julia. */
+/* Sets the two private fields that Mandyoc fills in createSwarm_2d
+ * (dmcell->ops->locatepoints and ->getneighbors). The callbacks are in Julia. */
 #include <petsc/private/dmimpl.h>
 
 PetscErrorCode mandyoc_set_cell_dm_ops(DM cell_dm,

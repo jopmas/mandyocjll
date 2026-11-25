@@ -3,30 +3,30 @@ using PETSc: LibPETSc
 include("parameters.jl")
 
 const petsclib = first(l for l in PETSc.petsclibs if PETSc.scalartype(l) === Float64)
-const PInt = PETSc.inttype(petsclib)          # PetscInt: 32 ou 64 bits, conforme o PETSc
+const PInt = PETSc.inttype(petsclib)          # PetscInt: 32 or 64 bits, depending on PETSc
 const PIC_COORDINATES = "DMSwarmPIC_coor"     # DMSwarmPICField_coor
 const SHIM_LIBRARY = joinpath(@__DIR__, "..", "csrc",
     "libmandyoc_shim.$(Sys.isapple() ? "dylib" : "so")")
 
-# ---- malha de velocidade (create_veloc) ------------------------------------
+# ---- velocity mesh (create_veloc) ------------------------------------
 function create_mesh(m::ModelParameters, dof, width)
     bx = m.periodic_boundary ? LibPETSc.DM_BOUNDARY_PERIODIC : LibPETSc.DM_BOUNDARY_NONE
     da = LibPETSc.DMDACreate2d(petsclib, MPI.COMM_WORLD, bx, LibPETSc.DM_BOUNDARY_NONE,
-        LibPETSc.DMDA_STENCIL_BOX, PInt.((m.Nx, m.Nz, -1, -1, dof, width))..., C_NULL, C_NULL)
+        LibPETSc.DMDA_STENCIL_BOX, PInt.((m.Nx, m.Nz, m.Px, m.Pz, dof, width))..., C_NULL, C_NULL)
     LibPETSc.DMSetUp(petsclib, da)
     LibPETSc.DMDASetUniformCoordinates(petsclib, da, 0.0, m.Lx, -m.domain_depth, 0.0, 0.0, 0.0)
     return da
 end
 create_velocity_mesh(m) = create_mesh(m, 2, stencil_width(m))       # da_Veloc
 create_thermal_mesh(m) = create_mesh(m, 1, stencil_width(m))        # da_Thermal
-# Mesma partição da da_Veloc, com ghosts para os estágios do RK4 no elemento vizinho.
+# Same partition as da_Veloc, with ghosts for the RK4 stages in the neighboring element.
 function create_advection_mesh(m, da_Veloc)
     da = create_mesh(m, 2, m.advection_stencil_width)
     @assert LibPETSc.DMDAGetCorners(petsclib, da) == LibPETSc.DMDAGetCorners(petsclib, da_Veloc)
     return da
 end
 
-# ---- callbacks da cell_dm (DMLocatePoints_DMDARegular_2d etc.) --------------
+# ---- callbacks of cell_dm (DMLocatePoints_DMDARegular_2d etc.) --------------
 struct SFNode
     rank::PInt
     index::PInt
@@ -39,7 +39,7 @@ end
 const CELL_CONTEXT = Ref{CellContext}()
 
 const POINT_NOT_FOUND = -367   # DMLOCATEPOINT_POINT_NOT_FOUND
-# regra do Mandyoc: o processo dono do nó inferior esquerdo é o dono do elemento
+# rule of Mandyoc: the rank that owns the lower left node owns the element
 function owned_cell(c::CellContext, x, z)
     m = c.m
     (x < 0 || x > m.Lx || z < -m.domain_depth || z > 0) && return POINT_NOT_FOUND
@@ -61,7 +61,7 @@ function locate_points(dm::Ptr{Cvoid}, pos::Ptr{Cvoid}, ltype::Cint, cell_sf::Pt
     cells = [SFNode(0, owned_cell(CELL_CONTEXT[], coor[2p-1], coor[2p])) for p in 1:npoints]
     e = @ccall $(dlsym_petsc(:VecRestoreArrayRead))(pos::Ptr{Cvoid}, a::Ptr{Ptr{Float64}})::Cint
     e == 0 || return e
-    # 0 = PETSC_COPY_VALUES: o array é do Julia, o PETSc copia
+    # 0 = PETSC_COPY_VALUES: the array belongs to Julia, and PETSc copies it
     GC.@preserve cells @ccall $(dlsym_petsc(:PetscSFSetGraph))(cell_sf::Ptr{Cvoid}, npoints::PInt,
         npoints::PInt, C_NULL::Ptr{PInt}, 0::Cint, cells::Ptr{SFNode}, 0::Cint)::Cint
 end
@@ -80,7 +80,7 @@ const SWARM_FIELDS = (("itag", LibPETSc.PETSC_INT), ("layer", LibPETSc.PETSC_INT
     ("geoq_fac", LibPETSc.PETSC_DOUBLE), ("strain_fac", LibPETSc.PETSC_DOUBLE),
     ("strain_rate_fac", LibPETSc.PETSC_DOUBLE), ("cont", LibPETSc.PETSC_INT))
 
-"Entrega o campo como Array Julia e devolve ao PETSc, mesmo se `f` lançar erro."
+"Calls `f` with the field as a Julia Array and returns it to PETSc, even if `f` throws."
 function with_field(f, swarm, name, ::Type{T}) where {T}
     n = LibPETSc.DMSwarmGetLocalSize(petsclib, swarm)
     bs, type, ptr = LibPETSc.DMSwarmGetField(petsclib, swarm, name)
@@ -91,8 +91,8 @@ function with_field(f, swarm, name, ::Type{T}) where {T}
     end
 end
 
-# número pseudoaleatório que só depende da partícula: a posição inicial não muda
-# com o número de processos (o rand_r do Mandyoc depende do rank)
+# pseudorandom number that depends only on the particle: the initial position does not
+# change with the number of ranks (rand_r in Mandyoc depends on the rank)
 unit_random(seed, id, k) = (hash((seed, id, k)) >> 11) * 2.0^-53 - 0.5
 
 function create_particle_swarm(m::ModelParameters, da_Veloc; location = :shim, init = (x, z, id) -> (id % 7, 1.5id))
@@ -141,7 +141,7 @@ function create_particle_swarm(m::ModelParameters, da_Veloc; location = :shim, i
     return particle_swarm, cell_dm
 end
 
-# ---- advecção (moveSwarm, parte cinemática) ----------------------------------
+# ---- advection (moveSwarm, kinematic part) ----------------------------------
 linear_interpolation(rx, rz, v0, v1, v2, v3) =
     (1 - rx) * (1 - rz) * v0 + rx * (1 - rz) * v1 + (1 - rx) * rz * v2 + rx * rz * v3
 
@@ -150,7 +150,7 @@ function interpolate_velocity(m, V, x, z)                           # V: VV
     i = clamp(trunc(Int, x / dx), 0, m.Nx - 2)
     k = clamp(trunc(Int, (z + m.domain_depth) / dz), 0, m.Nz - 2)
     rx = x / dx - i; rz = (z + m.domain_depth) / dz - k
-    if m.periodic_boundary                  # usa a imagem periódica que este processo tem
+    if m.periodic_boundary                  # use the periodic image available on this rank
         i < firstindex(V, 2) && (i += m.Nx)
         i + 1 > lastindex(V, 2) && (i -= m.Nx)
     end
@@ -159,8 +159,8 @@ function interpolate_velocity(m, V, x, z)                           # V: VV
     return u, w
 end
 
-# o Mandyoc dá `break` aqui no RK4, o que abandona as demais partículas do processo;
-# aqui só a posição do estágio volta ao domínio (periódico) ou para na borda (fechado)
+# Mandyoc does a `break` here in RK4, which skips the remaining particles of the rank; here only
+# the position of the stage is wrapped (periodic) or stopped at the boundary (closed)
 function keep_inside(m, x, z)
     e = m.boundary_offset                                           # epsilon_x
     x = m.periodic_boundary ? mod(x, m.Lx) : clamp(x, e, m.Lx - e)
@@ -177,7 +177,7 @@ function advect_coordinates!(m, coor, V, dt)
             uD, wD = interpolate_velocity(m, V, keep_inside(m, x + uC * dt, z + wC * dt)...)
             uA = (uA + 2uB + 2uC + uD) / 6; wA = (wA + 2wB + 2wC + wD) / 6
         end
-        # posição final: quem cruza borda aberta sai, e o DMSwarmMigrate remove
+        # final position: particles crossing an open boundary leave, and DMSwarmMigrate removes them
         x += dt * uA
         coor[2p-1] = m.periodic_boundary ? mod(x, m.Lx) : x
         coor[2p] = z + dt * wA
@@ -188,7 +188,7 @@ function advect_particles!(m, particle_swarm, da_advection, local_velocity, dt) 
     gx, gz, _, gm, gn, _ = LibPETSc.DMDAGetGhostCorners(petsclib, da_advection)
     rank = MPI.Comm_rank(MPI.COMM_WORLD)
     with_field(particle_swarm, "cont", PInt) do cont
-        fill!(cont, rank)                                           # processo antes da migração
+        fill!(cont, rank)                                           # rank before the migration
     end
     PETSc.with_local_array!(local_velocity; write = false) do a
         V = OffsetArray(reshape(a, 2, Int(gm), Int(gn)), 1:2, gx:gx+gm-1, gz:gz+gn-1)

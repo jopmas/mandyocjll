@@ -1,11 +1,10 @@
-# Equação térmica 2D (DMT.cpp, DM1_2d.cpp e thermal_Ke.cpp): elementos bilineares,
-# esquema theta e difusão artificial ao longo das linhas de corrente.
-# Inclua depois de particle_swarm.jl. Fora do escopo: magmatismo, basal_heat, aquecimento
-# por cisalhamento e as condições iniciais T_initial.
+# 2D thermal equation (DMT.cpp, DM1_2d.cpp and thermal_Ke.cpp): bilinear elements, theta scheme
+# and streamline artificial diffusion. Include after particle_swarm.jl.
+# Not covered: magmatism, basal_heat and the T_initial initial conditions.
 
 struct ElementMatrices
-    NT::Matrix{Float64}; NT_x::Matrix{Float64}; NT_z::Matrix{Float64}  # NT, NT_x, NT_z [nó, ponto]
-    gauss_weight::Vector{Float64}    # prodH*volume; aqui com o jacobiano 1/4, que o Mandyoc omite
+    NT::Matrix{Float64}; NT_x::Matrix{Float64}; NT_z::Matrix{Float64}  # NT, NT_x, NT_z [node, point]
+    gauss_weight::Vector{Float64}    # prodH*volume; here with the 1/4 Jacobian, which Mandyoc leaves out
     TKe::Matrix{Float64}; TMe::Matrix{Float64}; TFe::Vector{Float64}   # TKe, TMe, TFe
 end
 
@@ -30,7 +29,7 @@ function ElementMatrices(m::ModelParameters)                        # montaKeThe
     return ElementMatrices(NT, NT_x, NT_z, gw, TKe, TMe, TFe)
 end
 
-# montaKeThermal_simplif_2d: advecção + difusão artificial + difusão
+# montaKeThermal_simplif_2d: advection + artificial diffusion + diffusion
 function advection_diffusion!(TCe, e::ElementMatrices, m, u, w, kappa)
     dx, dz = element_size_x(m), element_size_z(m)
     eps_upwind(a) = a < -1 ? -1 - 1 / a : a <= 1 ? 0.0 : 1 - 1 / a   # eps
@@ -57,7 +56,7 @@ mutable struct ThermalSolver{D, V, M, K}
     thermal_rhs::V                       # Tf
     thermal_ksp::K                       # T_ksp
     temperature_bc_values::V             # Temper_0
-    temperature_bc_mask::V               # Temper_Cond (1 = livre, 0 = fixo)
+    temperature_bc_mask::V               # Temper_Cond (1 = free, 0 = fixed)
     local_temperature::V                 # local_Temper
     local_temperature_bc_mask::V         # local_TC
     local_thermal_rhs::V                 # local_FT
@@ -67,14 +66,14 @@ mutable struct ThermalSolver{D, V, M, K}
     iterations::Int
 end
 
-const P = petsclib   # atalho
-function local_view(da, a, dof = 1)      # array com índices globais, ghosts incluídos
+const P = petsclib   # shorthand
+function local_view(da, a, dof = 1)      # array with global indices, ghosts included
     gx, gz, _, gm, gn, _ = LibPETSc.DMDAGetGhostCorners(P, da)
     gx, gz, gm, gn = Int(gx), Int(gz), Int(gm), Int(gn)
     return dof == 1 ? OffsetArray(reshape(a, gm, gn), gx:gx+gm-1, gz:gz+gn-1) :
         OffsetArray(reshape(a, dof, gm, gn), 1:dof, gx:gx+gm-1, gz:gz+gn-1)
 end
-"Preenche um Vec global da malha com f(i, k)."
+"Fills a global Vec of the mesh with f(i, k)."
 function fill_field!(vec, da, f, dof = 1)
     si, sk, _, mi, mk, _ = LibPETSc.DMDAGetCorners(P, da)
     PETSc.with_local_array!(vec) do a
@@ -112,7 +111,7 @@ function ThermalSolver(m::ModelParameters, da_Thermal, da_Veloc, temperature)   
     return s
 end
 
-# O elemento é do processo dono do nó inferior esquerdo (DMDAGetElementCorners_2d).
+# An element belongs to the rank that owns its lower left node (DMDAGetElementCorners_2d).
 function element_ranges(m, da)
     si, sk, _, mi, mk, _ = Int.(LibPETSc.DMDAGetCorners(P, da))
     return si:min(si + mi, m.Nx - 1)-1, sk:min(sk + mk, m.Nz - 1)-1
@@ -136,7 +135,7 @@ function assemble_lhs!(s::ThermalSolver, velocity_next, dt)         # AssembleA_
     LibPETSc.MatZeroEntries(P, A)
     global_to_local(s.da_Veloc, velocity_next, s.local_velocity)
     gx, gz, _, gm, _, _ = Int.(LibPETSc.DMDAGetGhostCorners(P, s.da_Thermal))
-    row(i, k) = (i - gx) + (k - gz) * gm                            # índice local com ghosts, base 0
+    row(i, k) = (i - gx) + (k - gz) * gm                            # local index with ghosts, 0-based
     PETSc.with_local_array!(s.local_velocity, s.local_temperature, s.local_temperature_bc_mask,
         s.local_thermal_diffusivity_field; write = false) do v, t, c, kf
         V = local_view(s.da_Veloc, v, 2)
@@ -161,7 +160,7 @@ function assemble_lhs!(s::ThermalSolver, velocity_next, dt)         # AssembleA_
             for a in 1:4
                 index[a] = row(nodes[a]...)
                 free = C[nodes[a]...] != 0
-                for b in 1:4                                        # PETSc lê por linha
+                for b in 1:4                                        # PETSc reads row by row
                     values[4(a-1)+b] = free ? s.element.TMe[a, b] + m.thermal_time_theta * dt * TCe[a, b] : 0.0
                 end
             end
@@ -217,7 +216,7 @@ function assemble_rhs!(s::ThermalSolver, velocity, dt)              # AssembleF_
     LibPETSc.DMLocalToGlobal(P, s.da_Thermal, s.local_thermal_rhs, LibPETSc.ADD_VALUES, s.thermal_rhs)
 end
 
-"Um passo: temperature (Temper) é atualizada no lugar. Campos por nó/elemento como no Mandyoc."
+"One step: temperature (Temper) is updated in place. Nodal/element fields as in Mandyoc."
 function thermal_step!(s::ThermalSolver, temperature, velocity, velocity_next,
     radiogenic_heat_field, thermal_diffusivity_field, time_step_seconds)  # build_thermal + solve_thermal
     global_to_local(s.da_Thermal, temperature, s.local_temperature)
@@ -228,12 +227,12 @@ function thermal_step!(s::ThermalSolver, temperature, velocity, velocity_next,
     A, ksp = s.thermal_matrix_lhs, s.thermal_ksp
     LibPETSc.KSPSetOperators(P, ksp, A, A)
     LibPETSc.KSPSetFromOptions(P, ksp)
-    LibPETSc.KSPSetTolerances(P, ksp, s.m.rtol, 1e-50, 1e5, PInt(10000))
+    LibPETSc.KSPSetTolerances(P, ksp, s.m.solver_relative_tolerance, 1e-50, 1e5, PInt(10000))
     LibPETSc.KSPSolve(P, ksp, s.thermal_rhs, temperature)
     s.iterations = LibPETSc.KSPGetIterationNumber(P, ksp)
     PETSc.with_local_array!(temperature, s.temperature_bc_mask, s.temperature_bc_values; write = (true, false, false)) do T, c, b
         T .= T .* c .+ b
     end
-    Int(LibPETSc.KSPGetConvergedReason(P, ksp)) > 0 || error("KSP térmico não convergiu")
+    Int(LibPETSc.KSPGetConvergedReason(P, ksp)) > 0 || error("the thermal KSP did not converge")
     return temperature
 end

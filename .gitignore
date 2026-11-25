@@ -3,3 +3,18 @@ csrc/*.so
 results/*.bin
 .DS_Store
 LocalPreferences.toml
+bin/mandyocjll.so
+bin/mandyocjll.dylib
+bin/mandyocjll.stamp
+# inputs and outputs of the examples
+examples/**/*.zarr
+examples/**/*.nc
+examples/**/param.txt
+examples/**/interfaces.txt
+examples/**/input_*_0.txt
+examples/**/bcv_0.txt
+examples/**/scale_bcv.txt
+examples/**/plot_*.png
+examples/**/inputs/
+examples/**/__pycache__/
+!examples/examples_svg/two_layers_with_variable_conductivity/initial_temperature/*.txt

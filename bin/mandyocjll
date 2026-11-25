@@ -1,0 +1,116 @@
+#!/usr/bin/env julia
+const USAGE = """
+Usage: mandyocjll [-n RANKS] [-seed L1,L2,...] [-strain_seed S1,S2,...] [options]
+
+Run it in the folder of the scenario (param.txt, interfaces.txt and input_*_0.txt), as the C++ mandyoc:
+
+    mandyocjll -n 4 -seed 0,5,8 -strain_seed 0.0,1.0,1.0
+    julia PATH/bin/mandyocjll -n 4 -seed 0,5,8 -strain_seed 0.0,1.0,1.0
+    mpiexec -n 4 mandyocjll -seed 0,5,8 -strain_seed 0.0,1.0,1.0      (mpiexec of the MPI used by MPI.jl)
+
+Options:
+    -n RANKS            number of MPI ranks (default: 1); not with mpiexec
+    -i FOLDER           folder of the scenario (default: current folder)
+    -o FOLDER           folder of the outputs (default: folder of the scenario)
+    -seed L1,L2,...     layers with initial strain
+    -strain_seed S1,... initial strain of these layers (default: 0.5)
+    -h_air H            thickness of the air layer (m), for depth dependent rheologies
+    -Px N, -Pz N        number of ranks in each direction
+    -h, --help          this text
+Any other option goes to PETSc (e.g. -log_view).
+Run `make` in the folder of mandyocjll to compile it; without this each run takes a few more seconds to start.
+"""
+include(joinpath(dirname(realpath(@__FILE__)), "image.jl"))
+Base.set_active_project(joinpath(ROOT, "Project.toml"))
+
+function fail(message)
+    println(stderr, "mandyocjll: ", message)
+    exit(1)
+end
+
+function parse_arguments(args)
+    o = Dict{String, String}(); rest = String[]; i = 1
+    while i <= length(args)
+        a = args[i]
+        if a in ("-h", "--help")
+            print(USAGE); exit(0)
+        elseif a in ("-n", "-np", "-i", "-o", "-seed", "-strain_seed", "-h_air", "-Px", "-Pz")
+            i < length(args) || fail("option $a needs a value")
+            o[a == "-np" ? "-n" : a] = args[i+1]; i += 2
+        elseif startswith(a, "-strain_seed_constant")   # accepted by the C++ code, where it has no effect
+            i += i < length(args) && !startswith(args[i+1], "-") ? 2 : 1
+        else
+            push!(rest, a); i += 1
+        end
+    end
+    return o, rest
+end
+
+function number(T, text, option)
+    x = tryparse(T, strip(text))
+    return x === nothing ? fail("invalid value for $option: $text") : x
+end
+list(T, o, key) = haskey(o, key) ? [number(T, x, key) for x in split(o[key], ',')] : T[]
+
+const OPTIONS, PETSC_OPTIONS = parse_arguments(ARGS)
+const FOLDER = abspath(get(OPTIONS, "-i", pwd()))
+const OUTPUT = abspath(get(OPTIONS, "-o", FOLDER))
+const RANKS = number(Int, get(OPTIONS, "-n", "1"), "-n")
+const LAUNCHED_SIZE = something(tryparse(Int, get(ENV, "OMPI_COMM_WORLD_SIZE", "")), tryparse(Int, get(ENV, "PMI_SIZE", "")), 0)
+RANKS >= 1 || fail("-n must be at least 1")
+isfile(joinpath(FOLDER, "param.txt")) || fail("param.txt not found in $FOLDER")
+const SEEDS, STRAIN_SEEDS = list(Int, OPTIONS, "-seed"), list(Float64, OPTIONS, "-strain_seed")
+const H_AIR = haskey(OPTIONS, "-h_air") ? number(Float64, OPTIONS["-h_air"], "-h_air") : nothing
+const PX, PZ = number(Int, get(OPTIONS, "-Px", "-1"), "-Px"), number(Int, get(OPTIONS, "-Pz", "-1"), "-Pz")
+
+# one BLAS thread per rank: the OpenMP threads of every rank would compete for the same cores
+if max(RANKS, LAUNCHED_SIZE) > 1
+    for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS")
+        get!(ENV, name, "1")
+    end
+end
+
+# replace this process by Julia with the compiled image, if it is up to date
+const IN_IMAGE = realpath(unsafe_string(Base.JLOptions().image_file)) == (isfile(IMAGE) ? realpath(IMAGE) : "")
+const TRACE = get(ENV, "MANDYOCJLL_TRACE", "")          # only when building the image
+if !IN_IMAGE && isempty(TRACE) && isfile(IMAGE)
+    julia = image_julia()
+    if julia !== nothing
+        command = String[julia, "--startup-file=no", "--project=$ROOT", "-J", IMAGE, realpath(@__FILE__), ARGS...]
+        flush(stdout)
+        GC.@preserve command ccall(:execv, Cint, (Cstring, Ptr{Cstring}), julia, [Base.unsafe_convert.(Cstring, command); Cstring(C_NULL)])
+        fail("could not start $julia with $IMAGE")
+    elseif LAUNCHED_SIZE == 0
+        println(stderr, "mandyocjll: the compiled image is out of date (run `make`); running without it")
+    end
+elseif !isempty(TRACE) && !haskey(ENV, "MANDYOCJLL_TRACED") && RANKS == 1
+    run(addenv(Cmd(`$(Base.julia_cmd()) --project=$ROOT --startup-file=no --trace-compile=$(TRACE)_$(getpid()).jl $(realpath(@__FILE__)) $ARGS`), "MANDYOCJLL_TRACED" => "1"))
+    exit(0)
+end
+
+using MPI
+if RANKS > 1 && LAUNCHED_SIZE == 0       # start the ranks; each one runs this same file
+    IN_IMAGE || @eval import PETSc       # precompile once, before the ranks start
+    worker = String[]
+    for (k, v) in OPTIONS
+        k in ("-n", "-i", "-o") || push!(worker, k, v)
+    end
+    append!(worker, ["-i", FOLDER, "-o", OUTPUT], PETSC_OPTIONS)
+    process = run(ignorestatus(`$(mpiexec()) -n $RANKS $(Base.julia_cmd()) --startup-file=no $(realpath(@__FILE__)) $worker`))
+    exit(success(process) ? 0 : 1)
+end
+RANKS > 1 && fail("use either -n or mpiexec, not both")
+# mpiexec of MPICH (PMI_SIZE) with OpenMPI, or the other way around; Slurm sets PMI_SIZE with both
+const OTHER_MPI = !haskey(ENV, "SLURM_JOB_ID") && (MPI.MPIPreferences.abi == "OpenMPI" ?
+    haskey(ENV, "PMI_SIZE") && !haskey(ENV, "OMPI_COMM_WORLD_SIZE") : haskey(ENV, "OMPI_COMM_WORLD_SIZE"))
+OTHER_MPI && fail("this mpiexec belongs to another MPI ($(MPI.MPIPreferences.abi) is in use): run with -n instead")
+MPI.Init()
+LAUNCHED_SIZE > MPI.Comm_size(MPI.COMM_WORLD) &&
+    fail("this mpiexec belongs to another MPI ($(MPI.MPIPreferences.abi) is in use): run with -n instead")
+using Mandyocjll
+try
+    Mandyocjll.run_scenario(FOLDER, OUTPUT; seeds = SEEDS, strain_seeds = STRAIN_SEEDS, h_air = H_AIR, Px = PX, Pz = PZ, petsc_options = PETSC_OPTIONS)
+catch e
+    MPI.Comm_rank(MPI.COMM_WORLD) == 0 && (showerror(stderr, e, e isa ErrorException ? [] : catch_backtrace()); println(stderr))
+    MPI.Comm_size(MPI.COMM_WORLD) > 1 ? MPI.Abort(MPI.COMM_WORLD, 1) : exit(1)
+end

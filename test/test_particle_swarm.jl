@@ -1,9 +1,9 @@
-# mpiexec -n N julia --project=. test/test_particle_swarm.jl <shim|native> <closed|periodic> [passos] [stencil da malha de advecção]
+# mpiexec -n N julia --project=. test/test_particle_swarm.jl <shim|native> <closed|periodic> [steps] [stencil of the advection mesh]
 include("../src/particle_swarm.jl")
 using Printf
 
 function velocity_at(m, x, z)
-    U = 1.0e-9                                   # m/s (~3 cm/ano)
+    U = 1.0e-9                                   # m/s (~3 cm/yr)
     X = x / m.Lx; Z = (z + m.domain_depth) / m.domain_depth
     m.periodic_boundary || return (U * sinpi(X) * cospi(Z), -U * m.domain_depth / m.Lx * cospi(X) * sinpi(Z))
     return (U * (1 + 0.5Z), 0.3U * sinpi(2X) * sinpi(Z))
@@ -32,7 +32,7 @@ function main()
     expected = (m.Nx - 1) * (m.Nz - 1) * particles_per_element(m)
     total() = MPI.Allreduce(Int(LibPETSc.DMSwarmGetLocalSize(petsclib, particle_swarm)), +, comm)
     initial = total(); moved = 0; firstbad = 0
-    advect_particles!(m, particle_swarm, da_advection, local_velocity, 0.0)      # compila antes de medir
+    advect_particles!(m, particle_swarm, da_advection, local_velocity, 0.0)      # compile before timing
     MPI.Barrier(comm); t0 = MPI.Wtime()
     for s in 1:nsteps
         moved += advect_particles!(m, particle_swarm, da_advection, local_velocity, dt)
@@ -60,7 +60,7 @@ function main()
             size(ref) == size(pos) && (diff = maximum(abs, ref .- pos))
         end
         ok = ids && payload && (np == 1 || diff < 1e-3) && (location == :native || badowner == 0)
-        @printf("RESULT %-4s %-6s %-8s np=%d sw=%d N0=%d N=%d esperado=%d 1o_passo_ruim=%d migracoes=%d ids=%s payload=%s fora_do_dono=%d dpos_max=%.3g m t=%.2fs\n",
+        @printf("RESULT %-4s %-6s %-8s np=%d sw=%d N0=%d N=%d expected=%d 1st_bad_step=%d migrations=%d ids=%s payload=%s not_owned=%d dpos_max=%.3g m t=%.2fs\n",
             ok ? "OK" : "FAIL", location, boundary, np, sw, initial, length(I), expected, firstbad, moved, ids, payload, badowner, diff, elapsed)
     end
     LibPETSc.VecDestroy(petsclib, velocity); LibPETSc.VecDestroy(petsclib, local_velocity)

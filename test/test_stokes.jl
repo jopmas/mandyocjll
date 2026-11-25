@@ -23,9 +23,8 @@ solve!(c, dt = 0.0) = stokes_solve!(c.s, c.Vn, c.pr, c.V, c.eta, c.drho, dt)
 
 function main()
     PETSc.initialize(P)
-    base = (; Lx = 1.0, domain_depth = 1.0, rtol = 1e-13, uzawa_residual_tolerance = 1e-22, free_surface_stabilization = false)
-    # 1. força psi = sin^2(pi x) sin^2(pi z) (velocidade nula nas paredes), eta = 1: f = -eta lap(v)
-    #    com força só em z não há solução fechada geral; usa-se o modo free-slip: rho = cos(pi x) sin(pi z)
+    base = (; Lx = 1.0, domain_depth = 1.0, solver_relative_tolerance = 1e-13, uzawa_residual_tolerance = 1e-22, free_surface_stabilization = false)
+    # 1. free-slip mode, eta = 1: rho = cos(pi x) sin(pi z)
     #    -> w = cos(pi x) sin(pi z) * k^2/(eta (2k^2)^2) * amplitude, k = pi
     errs = map((11, 21, 41)) do n
         m = ModelParameters(; Nx = n, Nz = n, base...)
@@ -38,8 +37,8 @@ function main()
         end
     end
     o = log2(errs[2] / errs[3])
-    report(1.8 < o < 2.2, @sprintf("modo free-slip: erros relativos %.3g %.3g %.3g, ordem %.2f", errs..., o))
-    # 2. Couette de duas camadas (viscosidade 1 e 100), exato nos nós; contorno periódico
+    report(1.8 < o < 2.2, @sprintf("free-slip mode: relative errors %.3g %.3g %.3g, order %.2f", errs..., o))
+    # 2. two-layer Couette flow (viscosities 1 and 100), exact at the nodes; periodic or not
     for periodic in (true, false)
         n = 21; H(k) = k <= 10 ? 0.5 * k / 10 * 1 : 0.5 + 0.5 * (k - 10) / 10 / 100
         ex(k) = H(k) / H(20)
@@ -48,22 +47,22 @@ function main()
             mask = (i, k) -> (k == 0 || k == 20 || (!periodic && i in (0, n - 1))) ? (0.0, 0.0) : (1.0, 1.0))
         solve!(c)
         e = owned((v, i, k) -> max(abs(v[1] - ex(k)), abs(v[2])), c.Vn, c.dv, 2)
-        report(e < 1e-7, @sprintf("Couette duas camadas, periodico=%s: erro %.3g (Uzawa %d)", periodic, e, c.s.uzawa_iterations))
+        report(e < 1e-7, @sprintf("two-layer Couette, periodic=%s: error %.3g (Uzawa %d)", periodic, e, c.s.uzawa_iterations))
     end
-    # 3. FSSA: perturbação de superfície livre sobre "ar". Sem FSSA a velocidade é w0. Deslocar a
-    #    interface de theta*dt*w0 muda a força; a resposta define theta efetivo.
+    # 3. FSSA: perturbed free surface below "air". Without FSSA the velocity is w0. Moving the interface
+    #    by theta*dt*w0 changes the force; the response defines the effective theta.
     for legacy in (false, true)
         n = 41; D = 100e3; eta(i, k) = k < 32 ? 1e21 : 1e19
-        mk(stab) = ModelParameters(; Nx = n, Nz = n, Lx = D, domain_depth = D, rtol = 1e-13, uzawa_residual_tolerance = 1e-30,
+        mk(stab) = ModelParameters(; Nx = n, Nz = n, Lx = D, domain_depth = D, solver_relative_tolerance = 1e-13, uzawa_residual_tolerance = 1e-30,
             free_surface_stabilization = stab, fssa_theta = 0.5, fssa_legacy = legacy)
         z0(i, amp) = 0.8D + amp * cospi(i / (n - 1))
-        # densidade nodal = fração do volume de controle do nó abaixo da interface
+        # nodal density = fraction of the control volume of the node below the interface
         rho(amp) = (i, k) -> (dz = D / (n - 1); -10 * 3300 * clamp((z0(i, amp) - (k * dz - dz / 2)) / dz, 0, 1))
         w(stab, amp, dt) = (c = setup(mk(stab); eta, drho = rho(amp)); solve!(c, dt); owned((v, i, k) -> (i == 0 && k == 32) ? abs(v[2]) : 0.0, c.Vn, c.dv, 2))
         amp = 200.0; w0 = w(false, amp, 0.0)
         tau = amp / w0; dt = 0.2tau
         theta_eff = (w0 / w(true, amp, dt) - 1) / (dt / tau)
-        report(legacy ? true : 0.3 < theta_eff < 0.7, @sprintf("FSSA %s: theta nominal 0.5, theta efetivo %.3f (tau = %.4g anos)", legacy ? "como no C++" : "consistente", theta_eff, tau / 3.156e7))
+        report(legacy ? true : 0.3 < theta_eff < 0.7, @sprintf("FSSA %s: nominal theta 0.5, effective theta %.3f (tau = %.4g yr)", legacy ? "as in C++" : "consistent", theta_eff, tau / 3.156e7))
     end
     PETSc.finalize(P)
 end

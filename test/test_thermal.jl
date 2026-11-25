@@ -26,46 +26,46 @@ end
 function main()
     PETSc.initialize(P)
     L = 100e3; kap = 1e-6; still = (i, k) -> (0.0, 0.0)
-    # 1. difusão transiente: modo sin(pi z) decai com exp(-kappa pi^2 t/D^2); ordem 2
+    # 1. transient diffusion: mode sin(pi z) decays as exp(-kappa pi^2 t/D^2); order 2
     errs = map((11, 21, 41)) do n
-        m = ModelParameters(Nx = n, Nz = n, Lx = L, domain_depth = L, rtol = 1e-13)
+        m = ModelParameters(Nx = n, Nz = n, Lx = L, domain_depth = L, solver_relative_tolerance = 1e-13)
         t = 0.1L^2 / kap; steps = 2(n - 1)
         T, d, _ = run_case(m, (i, k) -> 1000sinpi(k / (n - 1)), still, steps, t / steps)
         max_error(T, d, (i, k) -> 1000sinpi(k / (n - 1)) * exp(-pi^2 * 0.1))
     end
     ord = log2(errs[2] / errs[3])
-    report(1.8 < ord < 2.2, @sprintf("difusao transiente: erros %.3g %.3g %.3g, ordem %.2f", errs..., ord))
-    # 2. duas camadas (1e-6 e 0.25e-6), estacionário exato nos nós
-    m = ModelParameters(Nx = 11, Nz = 21, Lx = L, domain_depth = L, rtol = 1e-13, thermal_time_theta = 1.0)
+    report(1.8 < ord < 2.2, @sprintf("transient diffusion: errors %.3g %.3g %.3g, order %.2f", errs..., ord))
+    # 2. two layers (1e-6 and 0.25e-6), steady state exact at the nodes
+    m = ModelParameters(Nx = 11, Nz = 21, Lx = L, domain_depth = L, solver_relative_tolerance = 1e-13, thermal_time_theta = 1.0)
     kf(i, k) = k < 10 ? 1e-6 : 0.25e-6
     T, d, _ = run_case(m, (i, k) -> 1000 * (1 - k / 20), still, 40, 1e18; kappa = kf)
     e = max_error(T, d, (i, k) -> k <= 10 ? 1000 - 200k / 10 : 800 - 800(k - 10) / 10)
-    report(e < 1e-6, @sprintf("duas camadas, estacionario: erro %.3g", e))
-    # 3. aquecimento radiogênico: perfil parabólico H D^2/(2 kappa c) z(1-z)
-    m = ModelParameters(Nx = 11, Nz = 21, Lx = L, domain_depth = L, rtol = 1e-13, thermal_time_theta = 1.0, use_radiogenic_heating = true)
+    report(e < 1e-6, @sprintf("two layers, steady state: error %.3g", e))
+    # 3. radiogenic heating: parabolic profile H D^2/(2 kappa c) z(1-z)
+    m = ModelParameters(Nx = 11, Nz = 21, Lx = L, domain_depth = L, solver_relative_tolerance = 1e-13, thermal_time_theta = 1.0, use_radiogenic_heating = true)
     amp = 1e-10 * L^2 / (2kap * m.heat_capacity)
     T, d, _ = run_case(m, (i, k) -> 0.0, still, 40, 1e18; H = (i, k) -> 1e-10)
     e = max_error(T, d, (i, k) -> amp * (k / 20) * (1 - k / 20))
-    report(e < 1e-6 * amp, @sprintf("radiogenico, estacionario: erro %.3g de %.4g", e, amp / 4))
-    # 4. advecção-difusão estacionária, Peclet de malha 5: limitada e sem oscilação
-    m = ModelParameters(Nx = 11, Nz = 41, Lx = L, domain_depth = L, rtol = 1e-13, thermal_time_theta = 1.0)
+    report(e < 1e-6 * amp, @sprintf("radiogenic heating, steady state: error %.3g of %.4g", e, amp / 4))
+    # 4. steady advection-diffusion, mesh Peclet number 5: bounded and without oscillations
+    m = ModelParameters(Nx = 11, Nz = 41, Lx = L, domain_depth = L, solver_relative_tolerance = 1e-13, thermal_time_theta = 1.0)
     Pe = 400.0; w = Pe * kap / L
     T, d, _ = run_case(m, (i, k) -> 1000 * (1 - k / 40), (i, k) -> (0.0, w), 60, 1e17)
     ex(i, k) = 1000 * (1 - exp(Pe * (k / 40 - 1))) / (1 - exp(-Pe))
     e = max_error(T, d, ex)
-    report(e < 1, @sprintf("adveccao-difusao estacionaria, Pe de malha %.0f: erro maximo %.3g de 1000", Pe / 40 / 2, e))
-    # 5. periódico: onda advectada por uma volta volta à posição inicial (kappa ~ 0)
+    report(e < 1, @sprintf("steady advection-diffusion, mesh Pe %.0f: max. error %.3g of 1000", Pe / 40 / 2, e))
+    # 5. periodic: a wave advected around the domain returns to the initial position, with decay
     errs = map((41, 81, 161)) do n
-        m = ModelParameters(Nx = n, Nz = 5, Lx = L, domain_depth = L, rtol = 1e-13, periodic_boundary = true,
+        m = ModelParameters(Nx = n, Nz = 5, Lx = L, domain_depth = L, solver_relative_tolerance = 1e-13, periodic_boundary = true,
             thermal_diffusivity = 1e-6, temperature_bc_top = false, temperature_bc_bottom = false)
         U = 1e-9; steps = 4(n - 1)
-        # kappa grande o bastante para Pe de malha < 1: sem difusão artificial
+        # kappa large enough for mesh Pe < 1: no artificial diffusion
         kp = U * L / 20; t = L / U
         T, d, _ = run_case(m, (i, k) -> 1000sinpi(2i / (n - 1)), (i, k) -> (U, 0.0), steps, t / steps; kappa = (i, k) -> kp)
         max_error(T, d, (i, k) -> 1000sinpi(2i / (n - 1)) * exp(-4pi^2 * kp * t / L^2))
     end
     ord = log2(errs[2] / errs[3])
-    report(1.8 < ord < 2.2, @sprintf("periodico, adveccao+difusao: erros %.3g %.3g %.3g, ordem %.2f", errs..., ord))
+    report(1.8 < ord < 2.2, @sprintf("periodic, advection+diffusion: errors %.3g %.3g %.3g, order %.2f", errs..., ord))
     PETSc.finalize(P)
 end
 main()
