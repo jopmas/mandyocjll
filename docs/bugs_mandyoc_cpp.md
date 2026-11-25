@@ -8,7 +8,7 @@ fontsize: 10pt
 colorlinks: true
 ---
 
-Código analisado: `mandyoc_jpm`, commit `64dc7d1`. Foi compilado com PETSc 3.24.5 no macOS (arm64), em cópias temporárias. **Nenhum repositório do Mandyoc foi alterado.** As linhas citadas são desse commit.
+Código analisado: `mandyoc_jpm`, commit `64dc7d1`. Foi compilado com PETSc 3.24.5 no macOS (arm64), em cópias temporárias. **Nenhum repositório do Mandyoc foi alterado.** As linhas citadas são desse commit. As medições dos itens 10 a 14 e da reologia usaram o `ggciag/mandyoc`, commit `956af67` (o `main` já incorporado ao fork).
 
 **Confirmado** significa que o problema foi reproduzido executando o C++. **Por leitura** significa que ele só foi visto no código.
 
@@ -16,13 +16,20 @@ Código analisado: `mandyoc_jpm`, commit `64dc7d1`. Foi compilado com PETSc 3.24
 |:-:|:-----------------|:------------|:---------|:----------------|
 | 1 | `break` no RK4 para a advecção das outras partículas | RK4, 2D, fluxo pelas bordas | Confirmado | Resolvido e testado |
 | 2 | RK4 lê fora dos ghosts | RK4, 2D, em paralelo | Confirmado (SEGV) | Resolvido e testado |
-| 3 | `MPI_Bcast` de 8 bytes em variável de 4 | Em paralelo | Confirmado (ASan) | Não se aplica ainda |
+| 3 | `MPI_Bcast` de 8 bytes em variável de 4 | Em paralelo | Confirmado (ASan) | Não se aplica |
 | 4 | Contorno periódico aborta com 1 processo em x | Periódico | Confirmado | Resolvido e testado |
 | 5 | RK4 não move a superfície | RK4 com rastreamento da superfície | Por leitura | Ainda não implementado |
 | 6 | `local_divV` é perdido e vira `NULL` | Magmatismo | Por leitura | Ainda não implementado |
 | 7 | Peso do FSSA não é `theta_FSSA` (5 vezes maior com g = 10) | FSSA ativo (padrão), 2D | Confirmado | Resolvido e testado |
 | 8 | FSSA usa o `dRho` da montagem anterior | FSSA ativo (padrão), 2D | Confirmado | Resolvido e testado |
 | 9 | Uzawa para no limite de iterações sem aviso | Sem convergência | Confirmado | Emite aviso |
+| 10 | Laço não linear para na 1ª iteração (`Xi = nan`) | Velocidade inicial nula, sem rampa | Confirmado | Resolvido |
+| 11 | `Calc_dt_calor` troca `dx` e `dz` | dx diferente de dz | Confirmado | Resolvido |
+| 12 | Reologias 9 e 19 viram viscosidade mínima | `non_linear_method = off` | Confirmado | Interrompe com erro |
+| 13 | Índice não inicializado em `Swarm_add_remove_2d` | Elemento sem partículas | Por leitura | Resolvido |
+| 14 | `sticky_blanket_air` pula elementos na divisa dos processos | Paralelo | Por leitura | Resolvido |
+| 15 | Remoção de partículas depende da ordem no processo | Paralelo | Por leitura | Resolvido e testado |
+| 16 | `-seed` não valida a camada | Camada inexistente | Por leitura | Resolvido e testado |
 
 O RK4 já é marcado como `not working yet!` em `header.h:50`, e todos os testes usam Euler. Os itens 1, 2 e 5 só afetam quem ativar `RK4 = Runge-Kutta`.
 
@@ -97,7 +104,7 @@ MPI_Bcast(&particles_per_ele,1,MPIU_INT,0,PETSC_COMM_WORLD);
 
 Uma verificação automática das chamadas de `MPI_Bcast` encontrou só este caso com tamanho errado. Os `PetscBool` enviados como `MPI_C_BOOL` estão corretos no PETSc 3.24.5, em que `PetscBool` é `bool`. A correção não foi executada.
 
-**Julia:** não se aplica ainda, pois não há leitor de `param.txt` nem `Bcast`.
+**Julia:** não se aplica; cada processo lê o `param.txt`, sem `Bcast`.
 
 # 4. Contorno periódico aborta com um processo em x
 
@@ -209,10 +216,89 @@ if (denok>denok_min) PetscPrintf(PETSC_COMM_WORLD,
 
 **Julia:** emite um aviso.
 
-# Observações que não são bugs do Mandyoc
+# 10. O laço não linear para na primeira iteração quando a velocidade inicial é nula
+
+**Onde:** `src/veloc_total.cpp`.
+
+`Xi` compara a velocidade anterior com a nova. Se a anterior é nula, `sig1 = 0` e `Xi = 0/0 = nan`. Como `nan > Xi_min` é falso, o laço termina com uma iteração, como se tivesse convergido.
+
+**Medição:** `Schmalholz_2011` reamostrado (101 × 61 nós), com `initial_dynamic_range = False`: o C++ imprime `Xi = nan 0` e segue. Com a rampa inicial ligada, as chamadas seguintes partem de velocidade não nula e o efeito é menor.
+
+**Sugestão** (não executada):
+
+```cpp
+Xi = (sig1>0.0 && sig2>0.0) ? 1.0 - vivi/PetscSqrtReal(sig1*sig2) : 1.0;
+```
+
+O laço também para em 700 iterações sem aviso. **Julia:** resolvido; avisa se não convergir.
+
+# 11. `Calc_dt_calor` usa a dimensão errada do elemento
+
+**Onde:** `src/main.cpp:405`.
+
+`VecMax` grava o índice do máximo em `ind_v_min`, e `VecMin` grava o do mínimo em `ind_v_max`. Com isso, `ind_v_mod` aponta para o outro extremo, e a escolha entre `dx` e `dz` pode usar a componente errada.
+
+**Medição:** slab reamostrado, passo 1. A maior velocidade em módulo é vertical (w = -6,5e-11 m/s), e o passo deveria usar dz = 11 km: 1,07e6 anos, limitado a 1,0e6 por `dt_max`. O C++ usou dx = 10 km: 9,73e5 anos. O fator de erro é dx/dz ou dz/dx.
+
+**Sugestão** (não executada):
+
+```cpp
+VecMax(Veloc_fut,&ind_v_max,&max_v);
+VecMin(Veloc_fut,&ind_v_min,&min_v);
+```
+
+**Julia:** resolvido.
+
+# 12. Reologias 9 e 19 com `non_linear_method = off`
+
+**Onde:** `src/calc_visc.cpp`.
+
+O cálculo dessas reologias só acontece com `WITH_NON_LINEAR == 1`. Com `off`, a viscosidade fica em `visc_MIN`, sem aviso.
+
+**Medição:** rift reamostrado (reologia 9) com `non_linear_method = off`: viscosidade mínima e mediana de 1e18 Pa s, o valor de `viscosity_min`. O máximo, 5e19, é o piso de `sticky_blanket_air` (50 vezes o mínimo). A medição do item 9 tinha essa mesma configuração.
+
+**Sugestão:** interromper com mensagem ao ler essa combinação. **Julia:** interrompe com erro.
+
+# 13. Índice não inicializado em `Swarm_add_remove_2d`
+
+**Onde:** `src/DMSwarm_move.cpp`.
+
+Se um elemento fica sem nenhuma partícula (`cont_p == 0`), `p_prox` nunca recebe valor, e `p_prox_total` é usado para ler `layer_array`, `rarray` e `strain_fac`. O resultado é indefinido.
+
+**Sugestão** (não executada): se `cont_p == 0`, procurar a partícula mais próxima nos elementos vizinhos ou interromper com mensagem. **Julia:** resolvido; usa a partícula mais próxima dos elementos vizinhos. Esse caminho não foi exercitado num teste.
+
+# 14. `sticky_blanket_air` depende da divisão entre processos
+
+**Onde:** `src/DMSwarm2mesh.cpp:579`.
+
+O laço vai só até `sx+mmx-2` e `sz+mmz-2` em cada processo, então a última linha de elementos de cada processo é pulada. Em z, se a divisa coincidir com a interface do ar, a camada não é aplicada ali. Em x, a atribuição a `[i+1]` cobre a maior parte. No rift com 2 e 4 processos o resultado não mudou.
+
+**Sugestão** (não executada): percorrer todos os elementos do processo e usar os ghosts de `qq_rho`. **Julia:** resolvido; mesmo resultado com 1 e 4 processos.
+
+# 15. A remoção de partículas depende da ordem no processo
+
+**Onde:** `src/DMSwarm_move.cpp`, função `Swarm_add_remove_2d`.
+
+É removida a partícula com a vizinha mais próxima. As duas partículas de um par mais próximo têm sempre a mesma distância, e o empate é decidido pela ordem no array, que muda com o número de processos. Na adição, `cell_seed` também inclui o `rank`. O resultado com 1 e com N processos não é o mesmo.
+
+**Evidência:** o C++ foi só lido. A cópia fiel em Julia deu partículas diferentes com 1, 2 e 4 processos; com desempate pela posição e semente sem o `rank`, o resultado é idêntico, bit a bit.
+
+**Sugestão** (não executada em C++): desempatar pela coordenada e tirar o `rank` de `cell_seed` (passo e índice do elemento já o tornam único). **Julia:** resolvido; `cpp_order = true` repete o C++.
+
+# 16. A opção `-seed` não valida a camada
+
+**Onde:** `src/reader.cpp:687` e `src/main.cpp`.
+
+`weakening_seed[seed_layer[k]]` é escrito sem conferir se a camada existe; uma camada fora do intervalo escreve fora do array. O teste em `main.cpp` só compara a quantidade de valores com `n_interfaces + 1`, depois da escrita, e imprime `Error` sem interromper.
+
+**Sugestão** (não executada): conferir `0 <= seed_layer[k] <= n_interfaces` antes da escrita e interromper. **Julia:** resolvido; interrompe com mensagem.
+
+# Observações a confirmar
 
 - **Jacobiano do elemento térmico:** `montaKeThermal_*` omite o fator 1/4. Como ele aparece em todos os termos, a solução não muda.
-- **PETSc.jl 0.5.6:** a estrutura `MatStencil` está na ordem `i,j,k,c`, e o header do C usa `k,j,i,c`. Por isso o Julia usa `MatSetValuesLocal`. Visto por leitura.
+- **Reologia 7:** a viscosidade é `visco_ref*A*exp(-(QE+VE*P)/(R*T))`, que cresce com a temperatura se `QE` é positivo. Vale confirmar se é intencional. O Julia repete a fórmula.
+- **Reologia 1:** retorna antes dos limites de viscosidade e da plasticidade. Vale confirmar. O Julia repete.
+- **PETSc.jl 0.5.6 (não é do Mandyoc):** a estrutura `MatStencil` está na ordem `i,j,k,c`, e o header do C usa `k,j,i,c`. Por isso o Julia usa `MatSetValuesLocal`. Visto por leitura.
 
 # Térmica 2D: comparação Julia × C++
 
@@ -243,3 +329,27 @@ Partículas e Stokes acoplados (van Keken caso 1a, 80 × 80 elementos, 36 partí
 | C++ (Euler) | 0,003111 | 213,8 | 0,01164 |
 
 A diferença cai com o passo de tempo: com o passo 4 vezes menor, as taxas são 0,01200 (Julia) e 0,01191 (C++). Os valores não foram conferidos com a tabela do artigo original.
+
+# Reologia e modelo acoplado: comparação Julia × C++
+
+A função `calc_visco_ponto` foi comparada em 52.000 pontos aleatórios, com as 13 reologias e as opções de plasticidade, pressão e limites: diferença relativa máxima de 1,1e-14.
+
+O modelo completo (partículas, térmica, Stokes não linear e advecção) foi comparado em dois casos dos testes, reamostrados, sem FSSA e com o `dt` do C++. Erro relativo (norma L2):
+
+| Caso | Passo | Velocidade | log10 da viscosidade | Temperatura |
+|:----------------|:-:|:-:|:-:|:-:|
+| Rift viscoplástico (201 × 51) | 0 | 1,7e-8 | 4,5e-9 | 0 |
+| Rift viscoplástico (201 × 51) | 3 | 2,8e-8 | 1,3e-8 | 8,1e-12 |
+| Slab, lei de potência (101 × 61) | 0 | 9,8e-7 | 8,2e-8 | - |
+| Slab, lei de potência (101 × 61) | 4 | 4,3e-7 | 6,1e-9 | - |
+
+O rift deu o mesmo com 1 e 4 processos. A temperatura do slab é nula. Nestas linhas do slab, o C++ rodou sem `Swarm_add_remove_2d`.
+
+Com a adição e remoção de partículas nos dois códigos (1 processo, mesma sequência de `rand_r`):
+
+| Caso | Passo | Velocidade | Deformação | Densidade |
+|:----------------|:-:|:-:|:-:|:-:|
+| Slab (cerca de 100 trocas por passo) | 6 | 3,1e-7 | 6,9e-6 | 8,4e-9 |
+| Rift, dt de 50 mil anos | 30 | 8,0e-7 | 1,4e-6 | 6,4e-9 |
+
+No rift, 172 partículas entraram e 103 saíram no último passo.
