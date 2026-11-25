@@ -1,0 +1,74 @@
+RESULT OK   shim   closed   np=1 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=0 ids=true payload=true fora_do_dono=0 dpos_max=NaN m t=4.09s
+RESULT OK   shim   closed   np=2 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=102983 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=2.37s
+RESULT OK   shim   closed   np=4 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=248639 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=1.42s
+RESULT OK   shim   closed   np=6 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=279716 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=1.29s
+RESULT OK   shim   periodic np=1 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=0 ids=true payload=true fora_do_dono=0 dpos_max=NaN m t=4.60s
+RESULT OK   shim   periodic np=2 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=405634 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=2.66s
+RESULT OK   shim   periodic np=4 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=809651 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=1.68s
+RESULT OK   shim   periodic np=6 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=702265 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=1.59s
+RESULT OK   native closed   np=1 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=0 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=3.89s
+RESULT OK   native closed   np=2 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=103010 ids=true payload=true fora_do_dono=2445 dpos_max=0 m t=2.17s
+RESULT OK   native closed   np=4 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=248768 ids=true payload=true fora_do_dono=7317 dpos_max=0 m t=1.31s
+RESULT OK   native closed   np=6 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=280390 ids=true payload=true fora_do_dono=12788 dpos_max=0 m t=1.33s
+RESULT OK   native periodic np=1 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=0 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=4.55s
+RESULT OK   native periodic np=2 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=405099 ids=true payload=true fora_do_dono=3098 dpos_max=0 m t=2.66s
+RESULT OK   native periodic np=4 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=808952 ids=true payload=true fora_do_dono=10185 dpos_max=0 m t=1.64s
+RESULT OK   native periodic np=6 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=701692 ids=true payload=true fora_do_dono=14229 dpos_max=0 m t=1.50s
+shim np=2 sw=1: 0 RESULT; ERROR: LoadError: BoundsError: attempt to access 2×52×31 OffsetArray(::Array{Float64, 3}, 1:2, 0:51, 0:30) with eltype Float64 with indices 1:2×0:51×0:30 at index [1, 52, 0]
+shim np=4 sw=1: 0 RESULT; ERROR: ERROR: ERROR: LoadError: LoadError: LoadError: BoundsError: attempt to access BoundsError: attempt to access BoundsError: attempt to access 2×27×31 2×27×31 2×27×31 OffsetArray(OffsetArray(OffsetArray(::Array{::Array{Float64, Float64, 3}3}::Array{F
+native np=2 sw=1: 0 RESULT; ERROR: LoadError: BoundsError: attempt to access 2×51×31 OffsetArray(::Array{Float64, 3}, 1:2, 50:100, 0:30) with eltype Float64 with indices 1:2×50:100×0:30 at index [1, 49, 16]
+native np=4 sw=1: 0 RESULT; ERROR: ERROR: ERROR: LoadError: LoadError: LoadError: BoundsError: attempt to access BoundsError: attempt to access BoundsError: attempt to access 2×26×31 2×27×31 2×27×31 OffsetArrayOffsetArray((OffsetArray(::::Array{Array{::Array{Float64Float64, , Float
+# termica
+RESULT OK   np=1 difusao transiente: erros 3.1 0.775 0.194, ordem 2.00
+RESULT OK   np=1 duas camadas, estacionario: erro 2.6e-11
+RESULT OK   np=1 radiogenico, estacionario: erro 4.65e-12 de 100
+RESULT OK   np=1 adveccao-difusao estacionaria, Pe de malha 5: erro maximo 0.0454 de 1000
+RESULT OK   np=1 periodico, adveccao+difusao: erros 0.468 0.117 0.0293, ordem 2.00
+RESULT OK   np=2 difusao transiente: erros 3.1 0.775 0.194, ordem 2.00
+RESULT OK   np=2 duas camadas, estacionario: erro 4.45e-11
+RESULT OK   np=2 radiogenico, estacionario: erro 1.76e-12 de 100
+RESULT OK   np=2 adveccao-difusao estacionaria, Pe de malha 5: erro maximo 0.0454 de 1000
+RESULT OK   np=2 periodico, adveccao+difusao: erros 0.468 0.117 0.0293, ordem 2.00
+RESULT OK   np=4 difusao transiente: erros 3.1 0.775 0.194, ordem 2.00
+RESULT OK   np=4 duas camadas, estacionario: erro 4.81e-10
+RESULT OK   np=4 radiogenico, estacionario: erro 7.59e-12 de 100
+RESULT OK   np=4 adveccao-difusao estacionaria, Pe de malha 5: erro maximo 0.0454 de 1000
+RESULT OK   np=4 periodico, adveccao+difusao: erros 0.468 0.117 0.0293, ordem 2.00
+RESULT OK   shim borda aberta np=1 ficaram=30132 esperado=30132 sairam=8748 erro_x=8.731149137020111e-11 m
+RESULT OK   shim borda aberta np=2 ficaram=30132 esperado=30132 sairam=8748 erro_x=8.731149137020111e-11 m
+RESULT OK   shim borda aberta np=4 ficaram=30132 esperado=30132 sairam=8748 erro_x=8.731149137020111e-11 m
+RESULT OK   native borda aberta np=1 ficaram=30132 esperado=30132 sairam=8748 erro_x=8.731149137020111e-11 m
+RESULT OK   native borda aberta np=2 ficaram=30132 esperado=30132 sairam=8748 erro_x=8.731149137020111e-11 m
+RESULT OK   native borda aberta np=4 ficaram=30132 esperado=30132 sairam=8748 erro_x=8.731149137020111e-11 m
+RESULT OK   shim   closed   np=1 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=0 ids=true payload=true fora_do_dono=0 dpos_max=NaN m t=4.10s
+RESULT OK   shim   closed   np=2 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=102983 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=2.30s
+RESULT OK   shim   closed   np=4 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=248639 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=1.42s
+RESULT OK   shim   closed   np=6 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=279716 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=1.23s
+RESULT OK   shim   periodic np=1 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=0 ids=true payload=true fora_do_dono=0 dpos_max=NaN m t=4.54s
+RESULT OK   shim   periodic np=2 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=405634 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=2.62s
+RESULT OK   shim   periodic np=4 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=809651 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=1.64s
+RESULT OK   shim   periodic np=6 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=702265 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=1.58s
+RESULT OK   native closed   np=1 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=0 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=3.86s
+RESULT OK   native closed   np=2 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=103010 ids=true payload=true fora_do_dono=2445 dpos_max=0 m t=2.17s
+RESULT OK   native closed   np=4 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=248768 ids=true payload=true fora_do_dono=7317 dpos_max=0 m t=1.28s
+RESULT OK   native closed   np=6 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=280390 ids=true payload=true fora_do_dono=12788 dpos_max=0 m t=1.05s
+RESULT OK   native periodic np=1 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=0 ids=true payload=true fora_do_dono=0 dpos_max=0 m t=4.41s
+RESULT OK   native periodic np=2 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=405099 ids=true payload=true fora_do_dono=3098 dpos_max=0 m t=2.57s
+RESULT OK   native periodic np=4 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=808952 ids=true payload=true fora_do_dono=10185 dpos_max=0 m t=1.59s
+RESULT OK   native periodic np=6 sw=2 N0=243000 N=243000 esperado=243000 1o_passo_ruim=0 migracoes=701692 ids=true payload=true fora_do_dono=14229 dpos_max=0 m t=1.44s
+# stokes
+RESULT OK   np=1 modo free-slip: erros relativos 0.0123 0.00308 0.000771, ordem 2.00
+RESULT OK   np=1 Couette duas camadas, periodico=true: erro 2.89e-14 (Uzawa 0)
+RESULT OK   np=1 Couette duas camadas, periodico=false: erro 1.27e-14 (Uzawa 0)
+RESULT OK   np=1 FSSA consistente: theta nominal 0.5, theta efetivo 0.496 (tau = 7.06e+04 anos)
+RESULT OK   np=1 FSSA como no C++: theta nominal 0.5, theta efetivo 2.481 (tau = 7.06e+04 anos)
+RESULT OK   np=2 modo free-slip: erros relativos 0.0123 0.00308 0.000771, ordem 2.00
+RESULT OK   np=2 Couette duas camadas, periodico=true: erro 2.88e-14 (Uzawa 0)
+RESULT OK   np=2 Couette duas camadas, periodico=false: erro 1.24e-14 (Uzawa 0)
+RESULT OK   np=2 FSSA consistente: theta nominal 0.5, theta efetivo 0.496 (tau = 7.06e+04 anos)
+RESULT OK   np=2 FSSA como no C++: theta nominal 0.5, theta efetivo 2.481 (tau = 7.06e+04 anos)
+RESULT OK   np=4 modo free-slip: erros relativos 0.0123 0.00308 0.000771, ordem 2.00
+RESULT OK   np=4 Couette duas camadas, periodico=true: erro 2.86e-14 (Uzawa 0)
+RESULT OK   np=4 Couette duas camadas, periodico=false: erro 1.13e-14 (Uzawa 0)
+RESULT OK   np=4 FSSA consistente: theta nominal 0.5, theta efetivo 0.496 (tau = 7.06e+04 anos)
+RESULT OK   np=4 FSSA como no C++: theta nominal 0.5, theta efetivo 2.481 (tau = 7.06e+04 anos)
