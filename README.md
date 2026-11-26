@@ -1,6 +1,11 @@
-# mandyocjll
+<div class="banner">
+        <h1>Mandyocjll</h1>
+        <p> <strong>MANtle DYnamics simulatOr Code in Julia</strong></p>
+    </div>
 
-mandyocjll is a port of [Mandyoc](https://github.com/ggciag/mandyoc) to Julia: a finite element code, written on top
+## About
+
+Mandyocjll is a port of [Mandyoc](https://github.com/ggciag/mandyoc) to Julia: a finite element code, written on top
 of the PETSc library (through PETSc.jl), to simulate the thermomechanical evolution of the lithosphere and the
 Earth's mantle in 2D and 3D. It reads the same input files as Mandyoc (`param.txt`, `interfaces.txt`,
 `input_*_0.txt`), solves the same equations with the same numerical methods, and writes the outputs as zarr stores,
