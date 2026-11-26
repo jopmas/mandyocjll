@@ -93,7 +93,7 @@ $$
 \dot{\varepsilon}_{II} = \sqrt{\tfrac{1}{2} \, \dot{\varepsilon}'_{ij} \dot{\varepsilon}'_{ij}}
 $$
 
-com $\dot{\varepsilon}'$ a parte desviadora. Ao todo há 13 reologias (de 0 a 10, 19 e 70), na função `particle_viscosity` de `src/rheology.jl`, equivalente a `calc_visco_ponto` do C++.
+com $\dot{\varepsilon}'$ a parte deviatórica. Ao todo há 13 reologias (de 0 a 10, 19 e 70), na função `particle_viscosity` de `src/rheology.jl`, equivalente a `calc_visco_ponto` do C++.
 
 **Plasticidade.** Com `plasticity = on` e as iterações não lineares ligadas, a viscosidade é limitada pelo critério de Drucker-Prager:
 
@@ -101,13 +101,13 @@ $$
 \tau_y = c \cos\varphi + p \sin\varphi, \qquad \eta \le \frac{\tau_y}{2 \dot{\varepsilon}_{II}}
 $$
 
-A coesão $c$ e o ângulo de atrito $\varphi$ diminuem linearmente com a deformação acumulada entre `weakening_min` e `weakening_max` (amolecimento por deformação). A deformação acumulada de cada partícula cresce com $\dot{\varepsilon}_{II} \, \Delta t$ e, com `strain_healing`, diminui com uma taxa que depende da temperatura.
+A coesão $c$ e o ângulo de atrito $\varphi$ diminuem linearmente com a deformação acumulada entre `weakening_min` e `weakening_max` (fragilização por deformação). A deformação acumulada de cada partícula cresce com $\dot{\varepsilon}_{II} \, \Delta t$ e, com `strain_healing`, diminui com uma taxa que depende da temperatura.
 
 **Limites.** A viscosidade final fica entre `viscosity_min` e `viscosity_max`. Com `initial_dynamic_range`, esses limites são abertos aos poucos no início (rampa de Gerya), uma década por vez a partir da média geométrica, o que estabiliza as primeiras iterações.
 
 ## O ar e a superfície livre
 
-O topo do modelo é uma camada de "ar adesivo" (*sticky air*): uma camada de densidade baixa e viscosidade pequena, que deixa a superfície da rocha se mover livremente. Onde a densidade nodal é menor que `air_threshold_density`, a temperatura é zerada. Com `sticky_blanket_air`, os elementos na interface ar-rocha recebem uma viscosidade mínima de 50 vezes `viscosity_min`.
+O topo do modelo é uma camada de "ar grudento" (*sticky air*): uma camada de densidade baixa e viscosidade pequena, que deixa a superfície da rocha se mover livremente. Onde a densidade nodal é menor que `air_threshold_density`, a temperatura é zerada. Com `sticky_blanket_air`, os elementos na interface ar-rocha recebem uma viscosidade mínima de 50 vezes `viscosity_min`.
 
 A estabilização FSSA (*free surface stabilization algorithm*, Kaus et al., 2010) evita a oscilação da superfície livre com passos de tempo grandes. Ela acrescenta à matriz um termo que antecipa a mudança da força de volume quando a interface se move:
 
@@ -152,7 +152,7 @@ $$
 \begin{pmatrix} \mathbf{f} \\ 0 \end{pmatrix}
 $$
 
-com $K$ a matriz de rigidez viscosa, $G$ o gradiente da pressão e $G^T$ o divergente. Em vez de montar o sistema inteiro, o Mandyoc usa o método de Uzawa com gradientes conjugados na pressão:
+com $K$ sendo a matriz de rigidez viscosa, $G$ o gradiente da pressão e $G^T$ o divergente. Em vez de montar o sistema inteiro, o Mandyoc usa o método de Uzawa com gradientes conjugados na pressão:
 
 1. resolver $K \mathbf{u} = \mathbf{f} - G \mathbf{p}$ (MUMPS, `solver = direct`, ou um método iterativo do PETSc);
 2. calcular o resíduo da incompressibilidade, $\mathbf{r} = G^T \mathbf{u}$;
@@ -272,7 +272,7 @@ O padrão de uma montagem é: copiar o vetor global para o local (`global_to_loc
 
 Tudo roda em MPI, com uma DMDA dividida entre os processos. As matrizes e vetores globais são distribuídos pelo PETSc; os laços sobre elementos e partículas são locais. Algumas reduções explícitas usam o MPI.jl (`MPI.Allreduce`), por exemplo no passo de tempo e no volume de magma. As saídas são reunidas por variável: cada variável é escrita por um processo diferente, em paralelo.
 
-Com mais de um processo, o `bin/mandyocjll` fixa `OMP_NUM_THREADS = 1`: o BLAS da conda abre várias threads por processo, que disputam os núcleos e deixam a rodada até 9 vezes mais lenta.
+Com mais de um processo, o `bin/mandyocjll` fixa `OMP_NUM_THREADS = 1`: o BLAS do conda abre várias threads por processo, que disputam os núcleos e deixam a rodada até 9 vezes mais lenta.
 
 ## Imagem compilada
 
@@ -292,7 +292,7 @@ cd ~/opt/mandyocjll
 make
 ```
 
-O `make` escolhe o PETSc e o MPI (no Linux, um PETSc compilado em `~/opt/petsc`, se compatível; no macOS, o do ambiente conda `tapioca`), instala os pacotes de Julia, compila a biblioteca em C e gera a imagem. Os detalhes estão em `docs/installation.md`. No Hypatia, o mandyocjll está em `~/opt/mandyocjll`, ligado ao PETSc `optimized-v3.24.1-openmpi`.
+O `make` escolhe o PETSc e o MPI (no Linux, um PETSc compilado em `~/opt/petsc`, se compatível; no MacOS, o do ambiente conda `tapioca`), instala os pacotes de Julia, compila a biblioteca em C e gera a imagem. Os detalhes estão em `docs/installation.md`. No Hypatia, o mandyocjll está em `~/opt/mandyocjll`, ligado ao PETSc `optimized-v3.24.1-openmpi`.
 
 ## Execução
 
@@ -355,7 +355,7 @@ cd inputs
 bash run_mac.sh
 ```
 
-O script roda o mandyocjll (o log vai para `FD.out`) e, se a rodada terminar sem erro, faz o pós-processamento: cria os `.nc` com `tools/zarr2nc.py`, gera os *snapshots* e o vídeo com os scripts de `post_processing` e compacta o cenário num zip. O rift deste tutorial (161 × 31 nós, 2.000 passos) levou poucos minutos com 4 processos num Mac mini.
+O script roda o mandyocjll (o log vai para `FD.out`) e, se a rodada terminar sem erro, faz o pós-processamento: cria os `.nc` com `tools/zarr2nc.py`, gera os *snapshots* e o vídeo com os scripts de `post_processing` e compacta o cenário num zip. O rift deste tutorial (161 × 31 nós, 2.000 passos) levou poucos minutos com 4 processos em um Mac Mini.
 
 ## Processar as saídas
 
