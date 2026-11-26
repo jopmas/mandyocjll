@@ -23,7 +23,7 @@ function ModelParameters(d::Dict{String, String}; overrides...)
         use_runge_kutta_4 = get(d, "RK4", "Euler") == "Runge-Kutta", periodic_boundary = b("periodic_boundary", false),
         thermal_diffusivity = f("thermal_diffusivity_coefficient", def.thermal_diffusivity),
         thermal_expansion_coefficient = f("thermal_expansion_coefficient", def.thermal_expansion_coefficient),
-        gravity_acceleration = f("gravity_acceleration", 10.0), heat_capacity = f("heat_capacity", 1250.0),
+        gravity_acceleration = f("gravity_acceleration", 10.0), heat_capacity = f("heat_capacity", 1250.0), basal_heat_flow = f("basal_heat", -1.0),
         mantle_density = f("density_mantle", 3300.0), temperature_difference = f("temperature_difference", 1500.0),
         use_radiogenic_heating = b("radiogenic_component", false), use_adiabatic_heating = b("adiabatic_component", false),
         use_shear_heating = b("shear_heating", false), shear_heating_scale_factor = f("Xi_shear", 1.0), high_diffusivity_in_asthenosphere = b("high_kappa_in_asthenosphere", false),
@@ -82,6 +82,13 @@ function initial_temperature(m::ModelParameters, T_initial, i, k)
     k == m.Nz - 1 && return 0.0
     k == 0 && return d
     return clamp(d * (m.Nz - 1 - k) / (m.Nz - 1) + 100cos(i * 3.14159 / (m.Nx - 1)), 0.0, d)
+end
+
+"multi_veloc.txt: number of changes, then the time (Myr) of each one."
+function read_multi_velocity(file)
+    isfile(file) || error("multi_veloc.txt not found (multi_velocity = True)")
+    x = parse.(Float64, split(read(file, String)))
+    return x[2:Int(x[1])+1]
 end
 
 "scale_bcv.txt: number of changes, then time (Myr) and factor of each one."

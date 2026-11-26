@@ -498,6 +498,18 @@ function time_step(s::Model)
     return min(0.1h / (max(u, w) * s.m.time_step_subdivision), s.m.max_time_step * SECONDS_PER_YEAR)
 end
 
+"""
+New velocity field (Init_Veloc, called by multi_veloc_change): `field(i, k)` is the velocity of the node, also
+used as the boundary values. Without a field (velocity_from_ascii = False) the C++ code keeps the current
+velocity, which here means field = nothing. Then the viscosity ramp, if initial_dynamic_range.
+"""
+function replace_velocity!(s::Model, field)
+    field === nothing || fill_field!(s.velocity, s.da_Veloc, field, 2)
+    LibPETSc.VecCopy(P, s.velocity, s.velocity_next)
+    LibPETSc.VecCopy(P, s.velocity, s.stokes.velocity_bc_values)
+    s.m.initial_dynamic_range && s.m.max_viscosity > s.m.min_viscosity && ramp_velocity!(s)
+end
+
 "Multiplies the boundary velocity (and the current one) by `scale`, as scale_bcv.txt does (rescaleVeloc)."
 function rescale_velocity!(s::Model, scale)
     LibPETSc.VecScale(P, s.velocity_next, scale)

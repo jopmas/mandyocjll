@@ -4,15 +4,34 @@ using Printf
 # options that change the result and have not been ported yet: stop instead of ignoring them
 function check_unsupported(d)
     on(k) = lowercase(get(d, k, "false")) in ("true", "on")
-    bad = [k for k in ("nondimensionalization", "multi_velocity") if on(k)]
+    bad = String[]
     get(d, "RK4", "Euler") == "Euler" || push!(bad, "RK4")
-    parse(Float64, get(d, "basal_heat", "-1")) > 0 && push!(bad, "basal_heat")
     parse(Int, get(d, "dimensions", "2")) == 2 || push!(bad, "dimensions")
     isempty(bad) || error("options of param.txt not ported yet: " * join(bad, ", "))
     # as in the C++ code, where "variable" (its default) is no longer available and stops the run
     get(d, "viscosity_per_element", "variable") == "constant" ||
         error("use viscosity_per_element = constant (variable, the default of Mandyoc, is no longer available)")
     on("interfaces_from_ascii") || error("use interfaces_from_ascii = True")
+end
+
+"""
+nondimensionalization = True: the C++ code solves the equations in units of the depth, the maximum viscosity,
+the gravity, the mantle density and the diffusivity, and mixes these units with years in the time step, time_max
+and the times of the input files (bug 27). The change of units does not change the solution, so here the equations
+are solved in SI units, as without the option, and only the scales are written (dimensional_convertion.txt).
+The tolerance denok, which depends on the units, is converted (run_scenario), and so is the extra g of the FSSA
+term of fssa_legacy (bug 7).
+"""
+function nondimensional_scales(d, m::ModelParameters)
+    h0, visc0 = m.domain_depth, parse(Float64, get(d, "viscosity_max", "1e25"))   # visc_MAX before the 1.0001 factor
+    g0, rho0, kappa0 = m.gravity_acceleration, m.mantle_density, m.thermal_diffusivity
+    return (; h0, visc0, g0, rho0, kappa0, veloc0 = rho0 * g0 * h0^2 / visc0)
+end
+
+function write_dimensional_scales(sc, folders, say)
+    text = @sprintf("depth %g\nviscosity %g\ngravity %g\ndensity %g\ndiffusivity %g\n", sc.h0, sc.visc0, sc.g0, sc.rho0, sc.kappa0)
+    foreach(f -> write(joinpath(f, "dimensional_convertion.txt"), text), unique(abspath.(folders)))
+    say("nondimensionalization = True: solved in SI units (same solution, outputs in SI units); scales in dimensional_convertion.txt")
 end
 
 "-seed and -strain_seed: initial strain of the given layers (parse_options and reader in the C++ code)."
@@ -43,6 +62,15 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
     d = read_param_file(joinpath(dir, "param.txt")); check_unsupported(d)
     overrides = h_air === nothing ? (;) : (; air_layer_thickness = h_air)
     m = ModelParameters(d; fssa_legacy = lowercase(get(d, "fssa_legacy", "false")) == "true", Px, Pz, overrides...)
+    if lowercase(get(d, "nondimensionalization", "false")) == "true"
+        # denok bounds the squared divergence of the velocity (G^T v, in m2/s): in the C++ code it is in units of
+        # veloc0*h0, so it is converted to SI units
+        sc = nondimensional_scales(d, m)
+        m = ModelParameters(d; fssa_legacy = m.fssa_legacy, Px, Pz, overrides...,
+            uzawa_residual_tolerance = m.uzawa_residual_tolerance * (sc.veloc0 * sc.h0)^2, fssa_legacy_gravity_unit = 1 / sc.g0)
+    end
+    # denok bounds the squared divergence (G^T v) in SI units: a large value stops the Uzawa iterations at once (bug 28)
+    m.uzawa_residual_tolerance > 1e-10 && say(@sprintf("warning: denok = %g (SI units) may leave the velocity compressible; tapIOca uses 1e-14", m.uzawa_residual_tolerance))
     m.use_pressure_in_rheology || h_air !== nothing || error("specify the thickness of the air layer with -h_air (depth dependent rheology)")
     layers = read_interfaces(joinpath(dir, "interfaces.txt"), m)
     say("mandyocjll: $np MPI rank(s), mesh $(m.Nx) x $(m.Nz), $(particles_per_element(m)) particles per element")
@@ -54,6 +82,8 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
     velocity_mask = mask === nothing ? nothing : (i, k) -> (mask[2(k*m.Nx+i)+1], mask[2(k*m.Nx+i)+2])
     velocity_changes = on("variable_bcv") ? read_scale_bcv(joinpath(dir, "scale_bcv.txt")) : Tuple{Float64, Float64}[]
     V0 = on("velocity_from_ascii") ? read_ascii_field(joinpath(dir, "input_velocity_0.txt")) : zeros(2m.Nx * m.Nz)
+    velocity_files = on("multi_velocity") ? read_multi_velocity(joinpath(dir, "multi_veloc.txt")) : Float64[]   # mv_time
+    velocity_file = 0                                                # i_veloc - 1
     random_strain = num("random_initial_strain", 0.0)
     initial_strain(x, z, l) = random_strain * (unit_random(m.random_seed, hash((x, z)), 3) + 0.5)
     location = m.periodic_boundary ? :shim : :native                 # the periodic DMDA has a different node spacing
@@ -66,6 +96,7 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
     if rank == 0 && abspath(out) != abspath(dir)                     # tapIOca reads param.txt from the output folder
         mkpath(out); cp(joinpath(dir, "param.txt"), joinpath(out, "param.txt"); force = true)
     end
+    rank == 0 && on("nondimensionalization") && write_dimensional_scales(nondimensional_scales(d, m), (dir, out), say)
     MPI.Barrier(comm)
     w = OutputWriter(out; export_thermal_diffusivity = on("export_thermal_diffusivity"), export_lithology = on("export_lithology"),
         write_particles = on("print_step_files"), magmatism = m.use_magmatism)
@@ -85,6 +116,19 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
             (t, scale) = popfirst!(velocity_changes)
             rescale_velocity!(s, scale)
             say("velocity multiplied by $scale ($t Myr)")
+        end
+        # multi_veloc_change, after rescaleVeloc: the next input_velocity_<n>.txt (as in the C++ code, it replaces
+        # the boundary values, including a factor of scale_bcv.txt applied before)
+        if !isempty(velocity_files) && s.time + dt > velocity_files[1] * 1e6 * SECONDS_PER_YEAR
+            t = popfirst!(velocity_files)
+            field = nothing
+            if on("velocity_from_ascii")
+                velocity_file += 1
+                say("Reading input_velocity_$velocity_file.txt ($t Myr)")
+                Vn = read_ascii_field(joinpath(dir, "input_velocity_$velocity_file.txt"))
+                field = (i, k) -> (Vn[2(k*m.Nx+i)+1], Vn[2(k*m.Nx+i)+2])
+            end
+            replace_velocity!(s, field)
         end
         surface === nothing || update_surface_conditions!(surface, (s.time + dt) / SECONDS_PER_YEAR, say)
         step!(s; surface)

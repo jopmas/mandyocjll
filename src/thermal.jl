@@ -1,6 +1,6 @@
 # 2D thermal equation (DMT.cpp, DM1_2d.cpp and thermal_Ke.cpp): bilinear elements, theta scheme
 # and streamline artificial diffusion. Include after particle_swarm.jl.
-# Not covered: basal_heat and the T_initial initial conditions.
+# Not covered: the T_initial initial conditions.
 
 struct ElementMatrices
     NT::Matrix{Float64}; NT_x::Matrix{Float64}; NT_z::Matrix{Float64}  # NT, NT_x, NT_z [node, point]
@@ -222,6 +222,23 @@ function assemble_rhs!(s::ThermalSolver, velocity, dt)              # AssembleF_
     LibPETSc.DMLocalToGlobal(P, s.da_Thermal, s.local_thermal_rhs, LibPETSc.ADD_VALUES, s.thermal_rhs)
 end
 
+"""
+Heat flow at the base (Heat_flow_at_the_base): after the solve, the bottom row is the row above it plus the
+temperature step of the flow through one element, with the conductivity of the mantle (kappa*RHOM*c).
+"""
+function basal_heat_flow!(s::ThermalSolver, temperature)
+    m = s.m
+    step = m.basal_heat_flow * element_size_z(m) / (m.thermal_diffusivity * m.mantle_density * m.heat_capacity)  # delta_T_basal
+    _, sk, _, mi, mk, _ = Int.(LibPETSc.DMDAGetCorners(P, s.da_Thermal))
+    sk == 0 || return temperature        # the rank does not own the bottom row
+    mk >= 2 || error("basal_heat needs at least two rows of nodes per rank in z")
+    PETSc.with_local_array!(temperature) do t
+        T = reshape(t, mi, mk)
+        T[:, 1] .= T[:, 2] .+ step
+    end
+    return temperature
+end
+
 "One step: temperature (Temper) is updated in place. Nodal/element fields as in Mandyoc."
 function thermal_step!(s::ThermalSolver, temperature, velocity, velocity_next,
     radiogenic_heat_field, thermal_diffusivity_field, time_step_seconds; melt_increment_field = nothing)  # build_thermal + solve_thermal
@@ -240,6 +257,7 @@ function thermal_step!(s::ThermalSolver, temperature, velocity, velocity_next,
     PETSc.with_local_array!(temperature, s.temperature_bc_mask, s.temperature_bc_values; write = (true, false, false)) do T, c, b
         T .= T .* c .+ b
     end
+    s.m.basal_heat_flow > 0 && basal_heat_flow!(s, temperature)
     Int(LibPETSc.KSPGetConvergedReason(P, ksp)) > 0 || error("the thermal KSP did not converge")
     return temperature
 end

@@ -109,8 +109,10 @@ end
 function fssa_term(m, d, dt)
     jump = (-d[1] - d[2] + d[3] + d[4]) / 2                         # rho_mean_bottom
     consistent = m.fssa_theta * dt * jump * element_size_x(m) / 4   # nodal integration: 4 nodes, 1/4 each
-    # C++: theta*dt*jump*g*dx/2, in a system that is 4 times larger
-    return m.fssa_legacy ? m.fssa_theta * dt * jump * m.gravity_acceleration * element_size_x(m) / 2 / 4 : consistent
+    # C++: theta*dt*jump*g*dx/2, in a system that is 4 times larger; the extra g is in the units of the C++ run
+    # (g = 1 with nondimensionalization, bug 7), so its weight changes with the units
+    g = m.gravity_acceleration * m.fssa_legacy_gravity_unit
+    return m.fssa_legacy ? m.fssa_theta * dt * jump * g * element_size_x(m) / 2 / 4 : consistent
 end
 
 function assemble_velocity!(s, velocity, pressure, viscosity_factor, density_variation, dt; fssa_density_variation = density_variation)  # build_veloc

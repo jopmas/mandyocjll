@@ -20,6 +20,7 @@ Base.@kwdef struct ModelParameters
     thermal_expansion_coefficient::Float64 = 3.28e-5  # alpha_exp_thermo
     gravity_acceleration::Float64 = 10.0       # gravity
     heat_capacity::Float64 = 1250.0            # c_heat_capacity
+    basal_heat_flow::Float64 = -1.0            # basal_heat (W/m2; <= 0: not used)
     use_radiogenic_heating::Bool = false       # WITH_RADIOGENIC_H
     use_adiabatic_heating::Bool = false        # WITH_ADIABATIC_H
     high_diffusivity_in_asthenosphere::Bool = false   # high_kappa_in_asthenosphere
@@ -67,6 +68,7 @@ Base.@kwdef struct ModelParameters
     free_surface_stabilization::Bool = true    # free_surface_stab
     fssa_theta::Float64 = 0.5                  # theta_FSSA
     fssa_legacy::Bool = false                  # new: true reproduces the term of the C++ code (see docs)
+    fssa_legacy_gravity_unit::Float64 = 1.0    # new: unit of g in that term (1/gravity with nondimensionalization)
     use_viscosity_harmonic_mean::Bool = false      # visc_harmonic_mean
     velocity_bc_top_normal::Bool = true        # bcv_top_normal   (true = fixed)
     velocity_bc_top_tangential::Bool = false   # bcv_top_slip
