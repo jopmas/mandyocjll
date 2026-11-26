@@ -342,11 +342,67 @@ O laço é `for (p = 0; seq_surface_size && p < nlocal; p++)`, com `seq_surface_
 
 **Sugestão** (não executada): usar o tamanho do vetor sequencial completo e limitar `i` a `global_surface_size - 2`. **Julia:** resolvido; todos os processos atualizam as suas partículas com a superfície completa. Com 1 e 4 processos, os resultados de Julia são iguais (superfície 4e-3 m, densidade 4e-6).
 
+# 22. O dPhi do calor latente é só o último incremento das iterações
+
+**Onde:** `src/DMSwarm_move.cpp:448-470` (`moveSwarm`), chamado em cada iteração não linear (`src/DMv.cpp:527`) e em cada um dos 4 subpassos.
+
+A fusão de cada partícula é recalculada em toda chamada de `moveSwarm`, sempre com a mesma temperatura da malha: `dphi = (T - Ts)/(L + facX)`, `Phi += dphi`, e o solidus sobe com a depleção. As chamadas funcionam como iterações de Newton: `Phi` converge para o equilíbrio sem calor latente (`T = Ts`), e `dPhi` guarda só o último incremento, que tende a zero. O calor latente da equação térmica (`-T*dS*dPhi/dt`) usa esse `dPhi`, então depende do número de iterações não lineares e some quando elas convergem bem. A fusão não consome a energia correspondente.
+
+**Evidência:** no rift de teste (121 × 41, `magmatism_Ts0 = 970`, passo 0, Julia, que repete o C++):
+
+| `Xi_min` | Iterações | Soma de Phi nos nós | dPhi máximo |
+|:-:|:-:|:-:|:-:|
+| 1e-3 | 2 | 2,262 | 1,9e-4 |
+| 1e-6 | 10 | 2,296 | 2,9e-6 |
+| 1e-9 | 34 | 2,298 | 1,6e-7 |
+
+**Sugestão** (não executada): calcular a fusão uma vez por passo, depois da equação do calor, com `dPhi` igual à fusão do passo, e aplicar o calor latente no passo seguinte (ou baixar a temperatura da partícula em `L*dphi`). **Julia:** repete o C++.
+
+# 23. O calor latente ignora `magmatism_dS`
+
+**Onde:** `src/DM1_2d.cpp:498`; em 3D, também `src/DMSwarm_move.cpp:689-692`.
+
+Na equação do calor, `float dS = 400.0;` é uma variável local que esconde o parâmetro `dS` lido de `magmatism_dS`. Em 3D, `Ts0`, `dTsdP`, `dTsdX` e `dS` também são constantes locais, e os quatro parâmetros `magmatism_*` não têm efeito.
+
+**Sugestão** (não executada): apagar as declarações locais. **Julia:** usa `magmatism_dS` na fusão e no calor latente. Com o padrão (400) o resultado é o mesmo do C++.
+
+# 24. A temperatura da fusão está em °C, e a do calor latente em K
+
+**Onde:** `src/DMSwarm_move.cpp:455` e `src/DM1_2d.cpp:491`.
+
+A fusão usa `L = tp*dS/c_heat_capacity`, com `tp` em °C. O calor latente usa `T_mean + 273`. A energia retirada não é a que a fusão supôs: a razão é `(T + 273)/T`, cerca de 1,2 a 1.300 °C.
+
+**Sugestão** (não executada): usar a temperatura absoluta nos dois (e 273,15). **Julia:** repete o C++.
+
+# 25. Sem fusão na última chamada, o magma vai para x = 0
+
+**Onde:** `src/DMSwarm_move.cpp:251-252` e `464-467`, e `src/magmatic.cpp`.
+
+`x_magma_high` e `z_magma_high` voltam a `(0, -depth)` em cada chamada de `moveSwarm`. A extração, nos passos de saída, usa a posição da última chamada (o último subpasso). Se nenhuma partícula fundiu nessa chamada, o que é comum pelo item 22, o volume é extrudido em x = 0, na borda esquerda. Num empate entre processos, vale o x do processo de maior número.
+
+**Evidência:** no rift de teste com `magmatism_Ts0 = 970`, os 2,26e8 m² do primeiro passo foram extrudidos em x = 0 nos dois códigos.
+
+**Sugestão** (não executada): guardar a posição da partícula mais rasa com fusão desde a última extração (ou no passo inteiro), e não extrudir se não houver. **Julia:** repete o C++, mas desempata pelo menor x (profundidades a menos de 1 cm são empate), e o resultado não depende do número de processos.
+
+# 26. `calc_magmatic_extraction` não retorna valor
+
+**Onde:** `src/magmatic.cpp:33-89`.
+
+A função é `PetscErrorCode`, mas não tem `return`. O compilador avisa (`-Wreturn-type`). Com o clang do macOS, o fim da função vira uma instrução de trap, e o programa para com `SIGTRAP` na primeira extração. Com o gcc (Linux, Hypatia), o comportamento é indefinido e por acaso funciona; o valor também não é conferido em `main.cpp`.
+
+**Evidência:** no macOS, todo cenário com extração parou no passo 1 com `Caught signal number 5 TRAP`. Com `PetscFunctionReturn(0);` no fim, numa cópia de teste, rodou normalmente.
+
+**Sugestão** (não executada): `PetscFunctionReturn(0);` no fim da função e `CHKERRQ(ierr)` na chamada. **Julia:** não se aplica.
+
 # Observações a confirmar
 
 - **Nível de base médio:** `sp_evaluate_adjusted_mean_elevation_with_sea_level` (`src/sp.cpp:324`) faz a média só do primeiro quarto dos pontos (`seq_surface_size / 2 / 4`), isto é, da borda esquerda do modelo. Vale confirmar se é intencional. O Julia repete.
 - **Altura da superfície nas partículas:** `sp_update_surface_swarm_particles_properties` usa `rx = 0.5` fixo, a média dos dois pontos vizinhos, e não a posição da partícula. O Julia repete.
 - **`aggradation_rate`:** é lido, mas não é usado.
+- **Volume extraído:** é o aumento da soma de `Phi` nos nós desde a última extração. `Phi` nunca é zerado, então o magma extrudido continua na fonte, e oscilações da média nos nós (advecção, partículas novas) entram no volume. Vale também para a fusão da crosta. O Julia repete.
+- **Viscosidade com fusão:** o fator `X_OH*X_m` (Lu & Huismans, 2021, com as constantes fixas no código) é aplicado depois dos limites de viscosidade, então a viscosidade pode passar de `viscosity_max` (até 5 vezes) ou ficar abaixo de `viscosity_min`. A densidade não muda com a fusão nem com a depleção. O Julia repete.
+- **Extração sem a superfície:** `magmatism_extraction = on` sem `sp_surface_tracking` não faz nada e não avisa. O Julia avisa.
+- **Superfície acima do topo do modelo:** os pontos da superfície que saem da malha (por exemplo, numa extrusão grande) são descartados pela migração do swarm, e a reamostragem preenche o buraco. O Julia mantém esses pontos e avisa.
 - **Ponto exatamente em `px` na reamostragem:** é ignorado pelas desigualdades estritas (`cx_aux < px`, `cx_aux > px`). O Julia usa esse ponto; a diferença só aparece nesse caso.
 - **Jacobiano do elemento térmico:** `montaKeThermal_*` omite o fator 1/4. Como ele aparece em todos os termos, a solução não muda.
 - **Reologia 7:** a viscosidade é `visco_ref*A*exp(-(QE+VE*P)/(R*T))`, que cresce com a temperatura se `QE` é positivo. Vale confirmar se é intencional. O Julia repete a fórmula.
@@ -419,4 +475,15 @@ No rift, 172 partículas entraram e 103 saíram no último passo.
 | `theunissen_sedimentation` (nível de base variável) | 29 m | 0,12 m | 3,5e-7 | 1,1e-6 |
 
 Densidade e deformação: erro relativo (norma L2) no último passo.
+
+# Magmatismo: comparação Julia × C++
+
+`rifting_sedimentation` do tapioca-svg, 121 × 41 nós, 5 passos, 1 processo, `fssa_legacy = true`, com o solidus baixado para fundir já no início. O C++ com extração rodou numa cópia com o `return` do item 26. Erro relativo (norma L2) no último passo:
+
+| Caso | Phi | X_depletion | Temperatura | Superfície |
+|:----------------------------------------|:-:|:-:|:-:|:-:|
+| `magmatism_Ts0 = 930`, sem extração | 3,2e-6 | 1,0e-6 | 2,1e-6 | 0,55 m |
+| `magmatism_Ts0 = 970`, com extração (2,26e8 m² em x = 0) | 1,2e-5 | 7,7e-7 | 2,1e-6 | 3,5 m |
+
+O volume extraído e a posição batem com o C++ (2,2632e8 m²; com `Ts0 = 930`, 2,6976e9 m² em x = 599,17 km). O `dPhi` difere em cerca de 3e-4, porque é a diferença pequena `T - Ts` em precisão simples. A velocidade e a deformação diferem em 1e-3 também sem magmatismo, porque uma fileira de partículas cai exatamente sobre a interface da crosta em -62,5 km. Com 1 e 4 processos, os resultados de Julia são iguais (Phi 7e-7, superfície 4e-3 m).
 

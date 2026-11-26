@@ -27,6 +27,11 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
   surface processes of `sp_mode` (diffusion and the sedimentation modes, with `sediment_layers.txt`,
   `sedimentation_rate.txt` and `base_level.txt`), which turn air particles below the surface into sediment and rock
   above it into air (`sp.cpp`).
+- **Magmatism**: melt fraction, depletion and last increment of each particle, from a solidus that rises with the
+  pressure and the depletion; the viscosity factor of the melt (Lu & Huismans, 2021); the latent heat in the heat
+  equation; and, at the output steps, the extraction of the new melt to the surface as a Gaussian (sigma = 10 km)
+  above the shallowest melting particle, as `magmatic_layer` (`magmatic.cpp`). As in the C++ code, the melt is
+  computed at each particle update, with the temperature of the mesh (bug 22).
 - **Time step**: 10% of the time to cross an element at the largest velocity, limited by `dt_max`.
 
 ## Differences from the C++ code
@@ -45,6 +50,8 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
 | Uzawa or nonlinear loop without convergence | silent (bug 9) | warning |
 | Threads | as many OpenMP threads per rank as the BLAS opens | one per rank when `-n` > 1 |
 | Surface | a swarm split among the ranks: steps in the initial surface, lost and duplicated points and particles not updated with more than one rank (bugs 18-21) | an array replicated on every rank: independent of the number of ranks |
+| Melt extraction | at x = 0 if no particle melted in the last update (bug 25); a tie goes to the highest rank | as the C++ code, but a tie (depths within 1 cm) goes to the smallest x: independent of the number of ranks |
+| Latent heat | `dS = 400` whatever `magmatism_dS` is (bug 23) | `magmatism_dS` |
 | Outputs | text files per step, organized by tapIOca | zarr stores |
 
 With these differences, the results of the two codes are not bit-identical. See [validation.md](validation.md) for

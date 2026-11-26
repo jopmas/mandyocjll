@@ -38,6 +38,7 @@ Read by mandyocjll (C++ names; the Julia names are in `src/parameters.jl` and in
 | Boundaries | `top_/bot_/left_/right_temperature`, `top_/bot_/left_/right_normal_velocity`, `..._tangential_velocity` |
 | Inputs | `interfaces_from_ascii`, `temperature_from_ascii`, `velocity_from_ascii`, `bcv_extern`, `variable_bcv` |
 | Surface | `sp_surface_tracking`, `sp_surface_processes`, `sp_mode` (`diffusion`, `sedimentation_only`, `sedimentation_rate_limited`, `theunissen_sedimentation`), `sp_d_c`, `surface_particles_per_element`, `sea_level`, `a2l`, `sp_continental_slope`, `sp_sediment_strain`, `variable_base_level` |
+| Magmatism | `magmatism`, `magmatism_extraction` (needs the surface tracking), `magmatic_layer`, `magmatism_Ts0`, `magmatism_dTdP`, `magmatism_dTdX`, `magmatism_dS` |
 | Outputs | `print_step_files` (particle trajectories), `export_lithology`, `export_thermal_diffusivity` |
 
 `fssa_legacy` is new: `True` reproduces the free surface stabilization term of the C++ code (see
@@ -45,12 +46,12 @@ Read by mandyocjll (C++ names; the Julia names are in `src/parameters.jl` and in
 `viscosity_per_element` must be `constant`: `variable`, the default of the C++ code, is no longer available there
 (it stops the run), so a `param.txt` without this key stops both codes. Rheologies 9 and 19 with `non_linear_method = off` stop the run, unless the viscosity is constant
 (`viscosity_max = viscosity_min`): the C++ code silently uses the minimum viscosity (bug 12).
+`magmatism_dS` is used both in the melting and in the latent heat; the C++ code uses 400 in the latent heat (bug 23).
 
 ## Not ported yet
 
 These options stop the run (`options of param.txt not ported yet: ...`):
 
-- `magmatism`;
 - `nondimensionalization`;
 - `multi_velocity`;
 - `RK4 = Runge-Kutta` (the RK4 of the C++ code is marked as not working; see the bugs document);

@@ -61,6 +61,7 @@ Short runs of the examples in `examples/`:
 | `continental_rift` from its SVG (161 × 31) with `shear_heating`, `Xi_shear = 5` | C++, 4 steps, 2 ranks | heat 1.6e-5, temperature 2.1e-6 |
 | `vanKeken1997_case1a`, `Crameri2012_case2`, `continental_rift`, `slab_detachment` | run, plots | no comparison yet beyond the tests above |
 | `continental_rift_with_surface_processes` from its SVG (161 × 31), each `sp_mode` | C++, 3 steps, 1 rank (Julia also with 4 ranks) | surface within 0.12 m (the C++ text files have 0.1 m resolution), density 3.5e-7, strain 1.1e-6 |
+| `rifting_sedimentation` from its SVG (121 × 41) with `magmatism`, solidus lowered to melt from the start | C++, 5 steps, 1 rank, with and without extraction (Julia also with 4 ranks) | Phi 1.2e-5, depletion 1e-6, temperature 2e-6, same extracted volume and position; see the bugs document |
 | `continental_rift_non_dimensional` | stops with the list of options not ported | |
 
 The punch does not converge in either code: the nonlinear iterations stop at 700 with `Xi` around 1e-8 (C++: 8e-9),

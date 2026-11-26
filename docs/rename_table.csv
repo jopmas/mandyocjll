@@ -327,3 +327,15 @@ Elementos finitos,VCe,,manter,14,,,
 Elementos finitos,VfMe,,manter,8,,,
 Elementos finitos,indice_aux_vec_ele,element_velocity_indices,opcional,1,,,Único nome em português do grupo
 Elementos finitos,v_vec_aux_ele,element_velocity_values,opcional,21,,,
+Magmatismo,magmatism_flag,use_magmatism,renomear,0,magmatism,,
+Magmatismo,magmatism_extraction_flag,use_melt_extraction,renomear,0,magmatism_extraction,,
+Magmatismo,magmatic_layer,magmatic_layer,manter,0,magmatic_layer,,Camada do magma extrudido
+Magmatismo,Ts0,solidus_reference_temperature,renomear,0,magmatism_Ts0,,Solidus a pressão zero e sem depleção (°C)
+Magmatismo,dTsdP,solidus_pressure_gradient,renomear,0,magmatism_dTdP,,
+Magmatismo,dTsdX,solidus_depletion_gradient,renomear,0,magmatism_dTdX,,
+Magmatismo,dS,melting_entropy,renomear,0,magmatism_dS,,Entropia de fusão (J/kg/K)
+Magmatismo,X,depletion,renomear,0,,,Campo das partículas; X_depletion na malha
+Magmatismo,Phi,melt_fraction,renomear,0,,,Campo das partículas e da malha
+Magmatismo,dPhi,melt_increment,renomear,0,,,Campo das partículas e da malha
+Magmatismo,x_magma_high / z_magma_high,shallowest_melt_x / shallowest_melt_z,renomear,0,,,
+Magmatismo,previous_magmatic_volume,previous_melt_volume,renomear,0,,,
