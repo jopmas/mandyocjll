@@ -192,6 +192,12 @@ end
 function stokes_solve!(s::StokesSolver, velocity_next, pressure, velocity, viscosity_factor, density_variation, dt;
     max_iterations = 400, fssa_density_variation = density_variation)
     assemble_velocity!(s, velocity, pressure, viscosity_factor, density_variation, dt; fssa_density_variation)
+    # 16 = 4^2: G is 4 times larger in Mandyoc, so the tolerance has the same meaning
+    uzawa!(s, velocity_next, pressure, 16.0, max_iterations)
+end
+
+"Uzawa conjugate gradients on the pressure (solve_veloc), after the assembly; `scale` converts the residual to Mandyoc."
+function uzawa!(s, velocity_next, pressure, scale, max_iterations)
     L, K, G = LibPETSc, s.velocity_stiffness_matrix, s.pressure_gradient_matrix
     M, mask = s.uzawa_preconditioner, s.velocity_bc_mask
     L.KSPSetOperators(P, s.velocity_ksp, K, K)
@@ -203,8 +209,7 @@ function stokes_solve!(s::StokesSolver, velocity_next, pressure, velocity, visco
     L.VecAXPY(P, velocity_next, 1.0, s.velocity_bc_values)
     L.MatMultTranspose(P, G, velocity_next, s.rk_vec2)                     # r0 = G^T V0
     L.VecPointwiseMult(P, s.zk_vec2, M, s.rk_vec2)
-    # 16 = 4^2: G is 4 times larger in Mandyoc, so the tolerance has the same meaning
-    residual() = 16 * Float64(L.VecDot(P, s.rk_vec2, s.rk_vec2))           # denok
+    residual() = scale * Float64(L.VecDot(P, s.rk_vec2, s.rk_vec2))        # denok
     s.uzawa_residual = residual(); s.uzawa_iterations = 0
     for k in 1:max_iterations-1
         s.uzawa_residual > s.m.uzawa_residual_tolerance || break

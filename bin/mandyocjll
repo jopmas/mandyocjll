@@ -15,7 +15,7 @@ Options:
     -seed L1,L2,...     layers with initial strain
     -strain_seed S1,... initial strain of these layers (default: 0.5)
     -h_air H            thickness of the air layer (m), for depth dependent rheologies
-    -Px N, -Pz N        number of ranks in each direction
+    -Px N, -Py N, -Pz N number of ranks in each direction (-Py: 3D)
     -h, --help          this text
 Any other option goes to PETSc (e.g. -log_view).
 Run `make` in the folder of mandyocjll to compile it; without this each run takes a few more seconds to start.
@@ -34,7 +34,7 @@ function parse_arguments(args)
         a = args[i]
         if a in ("-h", "--help")
             print(USAGE); exit(0)
-        elseif a in ("-n", "-np", "-i", "-o", "-seed", "-strain_seed", "-h_air", "-Px", "-Pz")
+        elseif a in ("-n", "-np", "-i", "-o", "-seed", "-strain_seed", "-h_air", "-Px", "-Py", "-Pz")
             i < length(args) || fail("option $a needs a value")
             o[a == "-np" ? "-n" : a] = args[i+1]; i += 2
         elseif startswith(a, "-strain_seed_constant")   # accepted by the C++ code, where it has no effect
@@ -61,7 +61,7 @@ RANKS >= 1 || fail("-n must be at least 1")
 isfile(joinpath(FOLDER, "param.txt")) || fail("param.txt not found in $FOLDER")
 const SEEDS, STRAIN_SEEDS = list(Int, OPTIONS, "-seed"), list(Float64, OPTIONS, "-strain_seed")
 const H_AIR = haskey(OPTIONS, "-h_air") ? number(Float64, OPTIONS["-h_air"], "-h_air") : nothing
-const PX, PZ = number(Int, get(OPTIONS, "-Px", "-1"), "-Px"), number(Int, get(OPTIONS, "-Pz", "-1"), "-Pz")
+const PX, PY, PZ = Tuple(number(Int, get(OPTIONS, k, "-1"), k) for k in ("-Px", "-Py", "-Pz"))
 
 # one BLAS thread per rank: the OpenMP threads of every rank would compete for the same cores
 if max(RANKS, LAUNCHED_SIZE) > 1
@@ -109,7 +109,7 @@ LAUNCHED_SIZE > MPI.Comm_size(MPI.COMM_WORLD) &&
     fail("this mpiexec belongs to another MPI ($(MPI.MPIPreferences.abi) is in use): run with -n instead")
 using Mandyocjll
 try
-    Mandyocjll.run_scenario(FOLDER, OUTPUT; seeds = SEEDS, strain_seeds = STRAIN_SEEDS, h_air = H_AIR, Px = PX, Pz = PZ, petsc_options = PETSC_OPTIONS)
+    Mandyocjll.run_scenario(FOLDER, OUTPUT; seeds = SEEDS, strain_seeds = STRAIN_SEEDS, h_air = H_AIR, Px = PX, Py = PY, Pz = PZ, petsc_options = PETSC_OPTIONS)
 catch e
     MPI.Comm_rank(MPI.COMM_WORLD) == 0 && (showerror(stderr, e, e isa ErrorException ? [] : catch_backtrace()); println(stderr))
     MPI.Comm_size(MPI.COMM_WORLD) > 1 ? MPI.Abort(MPI.COMM_WORLD, 1) : exit(1)

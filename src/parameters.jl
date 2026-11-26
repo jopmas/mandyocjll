@@ -1,13 +1,18 @@
 # New names: docs/rename_table.csv. The comment keeps the old name of Mandyoc
 # (names without a comment are the same as in Mandyoc, or new in this project).
 Base.@kwdef struct ModelParameters
+    dimensions::Int = 2                        # dimensions
     Nx::Int = 101                              # Nx
+    Ny::Int = 2                                # Ny (3D)
     Nz::Int = 31                               # Nz
     Px::Int = -1                               # Px (ranks in x; -1: chosen by PETSc)
+    Py::Int = -1                               # Py (3D)
     Pz::Int = -1                               # Pz
     Lx::Float64 = 1000.0e3                     # Lx
+    Ly::Float64 = 0.0                          # Ly (3D)
     domain_depth::Float64 = 300.0e3            # depth
     particles_per_element_x::Int = 9           # nx_ppe
+    particles_per_element_y::Int = 1           # ny_ppe (3D)
     particles_per_element_z::Int = 9           # nz_ppe
     particles_perturb_factor::Float64 = 0.5    # particles_perturb_factor
     random_seed::UInt64 = 1                    # seed
@@ -28,6 +33,8 @@ Base.@kwdef struct ModelParameters
     temperature_bc_bottom::Bool = true         # bcT_bot
     temperature_bc_left::Bool = false          # bcT_left
     temperature_bc_right::Bool = false         # bcT_right
+    temperature_bc_front::Bool = true          # bcT_front (3D, y = 0)
+    temperature_bc_back::Bool = true           # bcT_back (3D, y = Ly)
     solver_relative_tolerance::Float64 = 1.0e-5                     # rtol
     mantle_density::Float64 = 3300.0           # RHOM
     uzawa_residual_tolerance::Float64 = 1.0e-4 # denok_min
@@ -78,9 +85,14 @@ Base.@kwdef struct ModelParameters
     velocity_bc_left_tangential::Bool = false  # bcv_left_slip
     velocity_bc_right_normal::Bool = true      # bcv_right_normal
     velocity_bc_right_tangential::Bool = false # bcv_right_slip
+    velocity_bc_front_normal::Bool = true      # bcv_front_normal (3D)
+    velocity_bc_front_tangential::Bool = false # bcv_front_slip
+    velocity_bc_back_normal::Bool = true       # bcv_back_normal
+    velocity_bc_back_tangential::Bool = false  # bcv_back_slip
 end
 element_size_x(m::ModelParameters) = m.Lx / (m.Nx - 1)            # dx_const
+element_size_y(m::ModelParameters) = m.Ly / (m.Ny - 1)            # dy_const
 element_size_z(m::ModelParameters) = m.domain_depth / (m.Nz - 1)  # dz_const
 particles_per_element(m::ModelParameters) =                       # particles_per_ele
-    m.particles_per_element_x * m.particles_per_element_z
+    m.particles_per_element_x * m.particles_per_element_z * (m.dimensions == 3 ? m.particles_per_element_y : 1)
 stencil_width(m::ModelParameters) = m.periodic_boundary ? 2 : 1   # stencil_width (create_veloc)

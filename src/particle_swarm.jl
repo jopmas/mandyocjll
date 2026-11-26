@@ -35,7 +35,9 @@ mutable struct CellContext
     da_ptr::Ptr{Cvoid}
     si::Int; sk::Int; milocal::Int; mklocal::Int
     m::ModelParameters
+    sj::Int; mjlocal::Int                # 3D (DMLocatePoints_DMDARegular_3d)
 end
+CellContext(da_ptr, si, sk, milocal, mklocal, m) = CellContext(da_ptr, si, sk, milocal, mklocal, m, 0, 1)
 const CELL_CONTEXT = Ref{CellContext}()
 
 const POINT_NOT_FOUND = -367   # DMLOCATEPOINT_POINT_NOT_FOUND
@@ -48,6 +50,15 @@ function owned_cell(c::CellContext, x, z)
     (0 <= mi < c.milocal && 0 <= mk < c.mklocal) || return POINT_NOT_FOUND
     return mi + mk * c.milocal
 end
+function owned_cell(c::CellContext, x, y, z)
+    m = c.m
+    (x < 0 || x > m.Lx || y < 0 || y > m.Ly || z < -m.domain_depth || z > 0) && return POINT_NOT_FOUND
+    mi = trunc(Int, x / element_size_x(m)) - c.si
+    mj = trunc(Int, y / element_size_y(m)) - c.sj
+    mk = trunc(Int, (z + m.domain_depth) / element_size_z(m)) - c.sk
+    (0 <= mi < c.milocal && 0 <= mj < c.mjlocal && 0 <= mk < c.mklocal) || return POINT_NOT_FOUND
+    return mi + (mj + mk * c.mjlocal) * c.milocal
+end
 
 const petsc_path = petsclib.petsc_library
 function locate_points(dm::Ptr{Cvoid}, pos::Ptr{Cvoid}, ltype::Cint, cell_sf::Ptr{Cvoid})::Cint
@@ -56,9 +67,11 @@ function locate_points(dm::Ptr{Cvoid}, pos::Ptr{Cvoid}, ltype::Cint, cell_sf::Pt
     e == 0 || return e
     e = @ccall $(dlsym_petsc(:VecGetArrayRead))(pos::Ptr{Cvoid}, a::Ptr{Ptr{Float64}})::Cint
     e == 0 || return e
-    npoints = n[] ÷ 2
+    c = CELL_CONTEXT[]; dim = c.m.dimensions
+    npoints = n[] ÷ dim
     coor = unsafe_wrap(Array, a[], n[])
-    cells = [SFNode(0, owned_cell(CELL_CONTEXT[], coor[2p-1], coor[2p])) for p in 1:npoints]
+    cells = dim == 3 ? [SFNode(0, owned_cell(c, coor[3p-2], coor[3p-1], coor[3p])) for p in 1:npoints] :
+        [SFNode(0, owned_cell(c, coor[2p-1], coor[2p])) for p in 1:npoints]
     e = @ccall $(dlsym_petsc(:VecRestoreArrayRead))(pos::Ptr{Cvoid}, a::Ptr{Ptr{Float64}})::Cint
     e == 0 || return e
     # 0 = PETSC_COPY_VALUES: the array belongs to Julia, and PETSc copies it

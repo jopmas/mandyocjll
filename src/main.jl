@@ -6,7 +6,11 @@ function check_unsupported(d)
     on(k) = lowercase(get(d, k, "false")) in ("true", "on")
     bad = String[]
     get(d, "RK4", "Euler") == "Euler" || push!(bad, "RK4")
-    parse(Int, get(d, "dimensions", "2")) == 2 || push!(bad, "dimensions")
+    if parse(Int, get(d, "dimensions", "2")) == 3     # options the 3D C++ code does not have either
+        on("magmatism") && push!(bad, "magmatism in 3D")
+        (on("sp_surface_tracking") || on("sp_surface_processes")) && push!(bad, "surface tracking and processes in 3D")
+        on("periodic_boundary") && push!(bad, "periodic_boundary in 3D")
+    end
     isempty(bad) || error("options of param.txt not ported yet: " * join(bad, ", "))
     # as in the C++ code, where "variable" (its default) is no longer available and stops the run
     get(d, "viscosity_per_element", "variable") == "constant" ||
@@ -54,41 +58,53 @@ function apply_seeds!(layers, seeds, strains, say)
     end
 end
 
-function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air = nothing, Px = -1, Pz = -1, petsc_options = String[])
+function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air = nothing, Px = -1, Py = -1, Pz = -1, petsc_options = String[])
     PETSc.initialize(P; options = petsc_options); comm = MPI.COMM_WORLD; rank, np = MPI.Comm_rank(comm), MPI.Comm_size(comm)
     say(args...) = rank == 0 && (println(args...); flush(stdout))
     rank == 0 && check_output_folder(out)
     MPI.Barrier(comm)
     d = read_param_file(joinpath(dir, "param.txt")); check_unsupported(d)
     overrides = h_air === nothing ? (;) : (; air_layer_thickness = h_air)
-    m = ModelParameters(d; fssa_legacy = lowercase(get(d, "fssa_legacy", "false")) == "true", Px, Pz, overrides...)
+    m = ModelParameters(d; fssa_legacy = lowercase(get(d, "fssa_legacy", "false")) == "true", Px, Py, Pz, overrides...)
     if lowercase(get(d, "nondimensionalization", "false")) == "true"
         # denok bounds the squared divergence of the velocity (G^T v, in m2/s): in the C++ code it is in units of
         # veloc0*h0, so it is converted to SI units
         sc = nondimensional_scales(d, m)
-        m = ModelParameters(d; fssa_legacy = m.fssa_legacy, Px, Pz, overrides...,
+        m = ModelParameters(d; fssa_legacy = m.fssa_legacy, Px, Py, Pz, overrides...,
             uzawa_residual_tolerance = m.uzawa_residual_tolerance * (sc.veloc0 * sc.h0)^2, fssa_legacy_gravity_unit = 1 / sc.g0)
     end
     # denok bounds the squared divergence (G^T v) in SI units: a large value stops the Uzawa iterations at once (bug 28)
     m.uzawa_residual_tolerance > 1e-10 && say(@sprintf("warning: denok = %g (SI units) may leave the velocity compressible; tapIOca uses 1e-14", m.uzawa_residual_tolerance))
     m.use_pressure_in_rheology || h_air !== nothing || error("specify the thickness of the air layer with -h_air (depth dependent rheology)")
     layers = read_interfaces(joinpath(dir, "interfaces.txt"), m)
-    say("mandyocjll: $np MPI rank(s), mesh $(m.Nx) x $(m.Nz), $(particles_per_element(m)) particles per element")
+    three = m.dimensions == 3
+    mesh = three ? "$(m.Nx) x $(m.Ny) x $(m.Nz)" : "$(m.Nx) x $(m.Nz)"
+    say("mandyocjll: $np MPI rank(s), mesh $mesh, $(particles_per_element(m)) particles per element")
     apply_seeds!(layers, seeds, strain_seeds, say)
     on(k) = lowercase(get(d, k, "false")) == "true"; num(k, x) = parse(Float64, get(d, k, string(x)))
     T_initial = Int(num("T_initial", 0))
+    three && !on("temperature_from_ascii") && error("in 3D, use temperature_from_ascii = True")
     T0 = on("temperature_from_ascii") ? read_ascii_field(joinpath(dir, "input_temperature_0.txt")) : [initial_temperature(m, T_initial, i, k) for k in 0:m.Nz-1 for i in 0:m.Nx-1]
     mask = on("bcv_extern") ? read_ascii_field(joinpath(dir, "bcv_0.txt")) : nothing       # 1 = free, 0 = fixed
-    velocity_mask = mask === nothing ? nothing : (i, k) -> (mask[2(k*m.Nx+i)+1], mask[2(k*m.Nx+i)+2])
+    # nodal fields of the ascii files: x first, then y (3D), then z
+    node(i, k) = k * m.Nx + i; node(i, j, k) = (k * m.Ny + j) * m.Nx + i
+    velocity_mask = mask === nothing ? nothing : three ? (i, j, k) -> Tuple(mask[3node(i, j, k)+c] for c in 1:3) :
+        (i, k) -> (mask[2node(i, k)+1], mask[2node(i, k)+2])
     velocity_changes = on("variable_bcv") ? read_scale_bcv(joinpath(dir, "scale_bcv.txt")) : Tuple{Float64, Float64}[]
-    V0 = on("velocity_from_ascii") ? read_ascii_field(joinpath(dir, "input_velocity_0.txt")) : zeros(2m.Nx * m.Nz)
+    V0 = on("velocity_from_ascii") ? read_ascii_field(joinpath(dir, "input_velocity_0.txt")) : zeros((three ? 3m.Ny : 2) * m.Nx * m.Nz)
     velocity_files = on("multi_velocity") ? read_multi_velocity(joinpath(dir, "multi_veloc.txt")) : Float64[]   # mv_time
     velocity_file = 0                                                # i_veloc - 1
     random_strain = num("random_initial_strain", 0.0)
     initial_strain(x, z, l) = random_strain * (unit_random(m.random_seed, hash((x, z)), 3) + 0.5)
     location = m.periodic_boundary ? :shim : :native                 # the periodic DMDA has a different node spacing
-    s = Model(m, layers; temperature = (i, k) -> T0[k*m.Nx+i+1], velocity = (i, k) -> (V0[2(k*m.Nx+i)+1], V0[2(k*m.Nx+i)+2]), location, initial_strain, velocity_mask)
-    surface = Surface(d, m, layers, dir)
+    s = three ? Model3D(m, layers; temperature = (i, j, k) -> T0[node(i, j, k)+1], velocity = (i, j, k) -> Tuple(V0[3node(i, j, k)+c] for c in 1:3),
+            velocity_mask, initial_strain = (x, y, z, l) -> random_strain * (unit_random(m.random_seed, hash((x, y, z)), 3) + 0.5)) :
+        Model(m, layers; temperature = (i, k) -> T0[node(i, k)+1], velocity = (i, k) -> (V0[2node(i, k)+1], V0[2node(i, k)+2]), location, initial_strain, velocity_mask)
+    if three && (on("export_lithology") || on("print_step_files"))
+        say("warning: export_lithology and print_step_files are not available in 3D (ignored)")
+        d["export_lithology"] = d["print_step_files"] = "False"
+    end
+    surface = three ? nothing : Surface(d, m, layers, dir)
     surface === nothing || say("surface: $(length(surface.x)) points" * (surface.processes ? ", sp_mode = $(surface.mode)" : ""))
     extraction = m.use_magmatism && m.use_melt_extraction && surface !== nothing ? MeltExtraction() : nothing
     m.use_magmatism && m.use_melt_extraction && surface === nothing &&
@@ -126,13 +142,13 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
                 velocity_file += 1
                 say("Reading input_velocity_$velocity_file.txt ($t Myr)")
                 Vn = read_ascii_field(joinpath(dir, "input_velocity_$velocity_file.txt"))
-                field = (i, k) -> (Vn[2(k*m.Nx+i)+1], Vn[2(k*m.Nx+i)+2])
+                field = three ? (i, j, k) -> Tuple(Vn[3node(i, j, k)+c] for c in 1:3) : (i, k) -> (Vn[2node(i, k)+1], Vn[2node(i, k)+2])
             end
             replace_velocity!(s, field)
         end
         surface === nothing || update_surface_conditions!(surface, (s.time + dt) / SECONDS_PER_YEAR, say)
         step!(s; surface)
-        added, removed = add_remove_particles!(m, s.particle_swarm, s.da_Veloc, step; location)
+        added, removed = three ? add_remove_particles3!(m, s.particle_swarm, step) : add_remove_particles!(m, s.particle_swarm, s.da_Veloc, step; location)
         surface === nothing || surface_step!(surface, m, s.layers, s.particle_swarm, dt)
         every = initial_print_step > 0 && s.time < initial_print_max_time ? initial_print_step : step_print
         if step % every == 0

@@ -407,7 +407,8 @@ function particles!(s::Model, dt; move = false)
     global_to_local(s.da_advection, s.velocity_advection, s.local_velocity_advection)
     global_to_local(s.da_Thermal, s.temperature, s.local_temperature)
     global_to_local(s.da_Thermal, s.pressure_thermal_mesh, s.local_pressure_thermal_mesh)
-    s.shallowest_melt = update_particles!(s.m, s.range, s.layers, s.particle_swarm, s.da_advection, s.local_velocity_advection,
+    update = s.m.dimensions == 3 ? update_particles3! : update_particles!
+    s.shallowest_melt = update(s.m, s.range, s.layers, s.particle_swarm, s.da_advection, s.local_velocity_advection,
         s.da_Thermal, s.local_temperature, s.local_pressure_thermal_mesh, dt; move)
 end
 
@@ -416,11 +417,12 @@ function linear_solve!(s::Model)
     s.first_velocity_computed && LibPETSc.VecCopy(P, s.velocity_next, s.velocity_advection)
     s.first_velocity_computed = true
     particles!(s, 0.0)
-    particles_to_mesh!(s.m, s.layers, s.particle_swarm, s.da_Thermal, s.fields)
-    air_corrections!(s.m, s.da_Thermal, s.fields, s.temperature)
+    three = s.m.dimensions == 3
+    (three ? particles_to_mesh3! : particles_to_mesh!)(s.m, s.layers, s.particle_swarm, s.da_Thermal, s.fields)
+    (three ? air_corrections3! : air_corrections!)(s.m, s.da_Thermal, s.fields, s.temperature)
     calc_density_variation!(s.m, s.fields.density_variation, s.temperature, s.fields.density_field)
     stokes_solve!(s.stokes, s.velocity_next, s.pressure, s.velocity, s.fields.viscosity_factor, s.fields.density_variation, s.time_step_seconds)
-    pressure_to_nodes!(s.m, s.da_Veloc, s.da_Thermal, s.pressure, s.stokes.local_pressure, s.pressure_thermal_mesh)
+    (three ? pressure_to_nodes3! : pressure_to_nodes!)(s.m, s.da_Veloc, s.da_Thermal, s.pressure, s.stokes.local_pressure, s.pressure_thermal_mesh)
 end
 
 # 1 - correlation between two successive velocities (Xi)
@@ -489,6 +491,7 @@ end
 const SECONDS_PER_YEAR = 365.0 * 24 * 3600   # seg_per_ano
 "Time step (Calc_dt_calor): 10% of the time to cross an element, limited by max_time_step."
 function time_step(s::Model)
+    s.m.dimensions == 3 && return time_step3(s)
     u = w = 0.0
     PETSc.with_local_array!(s.velocity_next; write = false) do a
         u = maximum(abs, @view a[1:2:end]; init = 0.0); w = maximum(abs, @view a[2:2:end]; init = 0.0)
@@ -504,7 +507,7 @@ used as the boundary values. Without a field (velocity_from_ascii = False) the C
 velocity, which here means field = nothing. Then the viscosity ramp, if initial_dynamic_range.
 """
 function replace_velocity!(s::Model, field)
-    field === nothing || fill_field!(s.velocity, s.da_Veloc, field, 2)
+    field === nothing || (s.m.dimensions == 3 ? fill_field3!(s.velocity, s.da_Veloc, field, 3) : fill_field!(s.velocity, s.da_Veloc, field, 2))
     LibPETSc.VecCopy(P, s.velocity, s.velocity_next)
     LibPETSc.VecCopy(P, s.velocity, s.stokes.velocity_bc_values)
     s.m.initial_dynamic_range && s.m.max_viscosity > s.m.min_viscosity && ramp_velocity!(s)

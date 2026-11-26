@@ -132,6 +132,39 @@ function write_mesh_store(w, variable, Nx, Nz, Lx, Lz, fields)
     write_metadata(store, arrays, shapes, w.level)
 end
 
+"Gathers a field of the 3D DMDA on rank `root` (natural order, x first): [dof, x, y, z]."
+function gather_field3(vec, da, dof, Nx, Ny, Nz, root)
+    comm = MPI.COMM_WORLD
+    corners = MPI.Gather(Int32[Int32(c) for c in LibPETSc.DMDAGetCorners(P, da)], comm; root)
+    values = PETSc.with_local_array!(copy, vec; write = false)
+    MPI.Comm_rank(comm) == root || (MPI.Gatherv!(values, nothing, comm; root); return nothing)
+    c = reshape(corners, 6, :); counts = [Int32(dof * c[4, r] * c[5, r] * c[6, r]) for r in axes(c, 2)]
+    buffer = zeros(sum(counts)); MPI.Gatherv!(values, VBuffer(buffer, counts), comm; root)
+    out = zeros(dof, Nx, Ny, Nz); o = 0
+    for r in axes(c, 2)
+        n = counts[r]; block = reshape(view(buffer, o+1:o+n), dof, Int(c[4, r]), Int(c[5, r]), Int(c[6, r])); o += n
+        out[:, c[1, r]+1:c[1, r]+c[4, r], c[2, r]+1:c[2, r]+c[5, r], c[3, r]+1:c[3, r]+c[6, r]] .= block
+    end
+    return out
+end
+
+# regular 3D mesh: one chunk per step, dims (time, z, y, x); `fields` = [(name, type, unit, array [x, y, z])]
+function write_mesh_store3(w, variable, m, fields)
+    store = joinpath(w.path, "$variable.zarr"); nt = length(w.times)
+    x, y, z = axis_array("x", m.Nx), axis_array("y", m.Ny), axis_array("z", m.Nz)
+    arrays = vcat(time_arrays(), [x, y, z], [ZarrArray(n, T, ["time", "z", "y", "x"], [1, m.Nz, m.Ny, m.Nx],
+        Dict{String, Any}("long_name" => n, "units" => u)) for (n, T, u, _) in fields])
+    if nt == 1
+        write_chunk(store, x, (0,), range(0, m.Lx, length = m.Nx), w.level); write_chunk(store, y, (0,), range(0, m.Ly, length = m.Ny), w.level)
+        write_chunk(store, z, (0,), range(-m.domain_depth, 0, length = m.Nz), w.level)
+    end
+    for (a, (_, _, _, data)) in zip(arrays[6:end], fields); write_chunk(store, a, (nt - 1, 0, 0, 0), data, w.level); end
+    write_times(w, store)
+    shapes = Dict{String, Vector{Int}}("time" => [nt], "step" => [nt], "x" => [m.Nx], "y" => [m.Ny], "z" => [m.Nz])
+    for (n, _, _, _) in fields; shapes[n] = [nt, m.Nz, m.Ny, m.Nx]; end
+    write_metadata(store, arrays, shapes, w.level)
+end
+
 "Lithology on a 5 times finer mesh, as tapIOca does with the litho_* files."
 function lithology_mesh(m, particle_swarm, root)
     n, k = 5(m.Nx - 1) + 1, 5(m.Nz - 1) + 1
@@ -216,6 +249,20 @@ function write_output!(w::OutputWriter, s::Model, step; surface = nothing)
         "thermal_diffusivity" => (f.thermal_diffusivity_field, s.da_Thermal, 1), "Phi" => (f.melt_fraction_field, s.da_Thermal, 1),
         "dPhi" => (f.melt_increment_field, s.da_Thermal, 1), "X_depletion" => (f.depletion_field, s.da_Thermal, 1))
     info = Dict(OUTPUT_VARIABLES)
+    if m.dimensions == 3
+        for (n, name) in enumerate(w.variables)
+            vec, da, dof = sources[name]; root = (n - 1) % np; T, u = info[name]
+            dof = name == "velocity" ? 3 : dof
+            a = gather_field3(vec, da, dof, m.Nx, m.Ny, m.Nz, root)
+            a === nothing && continue
+            a[abs.(a) .< 1e-50] .= 0
+            fields = dof == 3 ? [("vx", T, u, a[1, :, :, :]), ("vy", T, u, a[2, :, :, :]), ("vz", T, u, a[3, :, :, :])] :
+                [(name, T, u, a[1, :, :, :])]
+            write_mesh_store3(w, name, m, fields)
+        end
+        MPI.Barrier(comm); w.seconds += MPI.Wtime() - start
+        return
+    end
     for (n, name) in enumerate(w.variables)                          # each variable is written by one rank
         vec, da, dof = sources[name]; root = (n - 1) % np; T, u = info[name]
         a = gather_field(vec, da, dof, m.Nx, m.Nz, root)
