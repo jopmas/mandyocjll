@@ -442,7 +442,7 @@ function rescale_velocity!(s::Model, scale)
 end
 
 "One time step: temperature, velocity and advection (4 Euler substeps, as in the C++ code)."
-function step!(s::Model; substeps = 4)
+function step!(s::Model; substeps = 4, surface = nothing)
     dt = s.time_step_seconds
     thermal_step!(s.thermal, s.temperature, s.velocity, s.velocity_next, s.fields.radiogenic_heat_field, s.fields.thermal_diffusivity_field, dt)
     solve_velocity_total!(s)
@@ -452,6 +452,7 @@ function step!(s::Model; substeps = 4)
             a .= f .* v1 .+ (1 - f) .* v0
         end
         particles!(s, dt / substeps; move = true)
+        surface === nothing || advect_surface!(surface, s.m, s.da_advection, s.local_velocity_advection, dt / substeps)
     end
     s.time += dt
     s.time_step_seconds = time_step(s)

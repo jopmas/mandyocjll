@@ -80,7 +80,7 @@ end
 
 "Stops if the folder already has the output of a previous run."
 function check_output_folder(path)
-    stale = [joinpath(path, "$v.zarr") for v in vcat(first.(OUTPUT_VARIABLES), ["lithology", "particles_trajectories"])]
+    stale = [joinpath(path, "$v.zarr") for v in vcat(first.(OUTPUT_VARIABLES), ["lithology", "particles_trajectories", "surface"])]
     any(isdir, stale) && error("there are already zarr outputs in $path; move or delete them before running again")
 end
 
@@ -188,8 +188,20 @@ function write_trajectories(w, m, particle_swarm, root)
         "description" => "particle trajectories", "reference_timestep" => "0"))
 end
 
+"Surface (surface.zarr): the height of the regular points, as surface.nc of tapIOca (x from 0 to Lx)."
+function write_surface_store(w, surface, Lx)
+    store = joinpath(w.path, "surface.zarr"); nt = length(w.times); n = length(surface.z)
+    x = axis_array("x", n)
+    height = ZarrArray("surface", Float32, ["time", "x"], [1, n], Dict{String, Any}("long_name" => "surface", "units" => "m"))
+    arrays = vcat(time_arrays(), [x, height])
+    nt == 1 && write_chunk(store, x, (0,), range(0, Lx, length = n), w.level)
+    write_chunk(store, height, (nt - 1, 0), surface.z, w.level)
+    write_times(w, store)
+    write_metadata(store, arrays, Dict{String, Vector{Int}}("time" => [nt], "step" => [nt], "x" => [n], "surface" => [nt, n]), w.level)
+end
+
 "Appends the current state of the model to the zarr stores."
-function write_output!(w::OutputWriter, s::Model, step)
+function write_output!(w::OutputWriter, s::Model, step; surface = nothing)
     start = MPI.Wtime(); comm = MPI.COMM_WORLD; m = s.m; rank, np = MPI.Comm_rank(comm), MPI.Comm_size(comm)
     push!(w.times, s.time / SECONDS_PER_YEAR / 1e6); push!(w.steps, step)
     MPI.Barrier(comm)
@@ -213,6 +225,7 @@ function write_output!(w::OutputWriter, s::Model, step)
         mesh === nothing || write_mesh_store(w, "lithology", size(mesh)..., m.Lx, m.domain_depth, [("lithology", Int8, "ID", mesh)])
     end
     w.write_particles && write_trajectories(w, m, s.particle_swarm, (length(w.variables) + 1) % np)
+    surface !== nothing && rank == (length(w.variables) + 2) % np && write_surface_store(w, surface, m.Lx)
     MPI.Barrier(comm)
     w.seconds += MPI.Wtime() - start
 end

@@ -4,8 +4,7 @@ using Printf
 # options that change the result and have not been ported yet: stop instead of ignoring them
 function check_unsupported(d)
     on(k) = lowercase(get(d, k, "false")) in ("true", "on")
-    bad = [k for k in ("sp_surface_processes", "magmatism", "nondimensionalization", "multi_velocity", "plot_sediment") if on(k)]
-    get(d, "sp_mode", "none") == "none" || push!(bad, "sp_mode")
+    bad = [k for k in ("magmatism", "nondimensionalization", "multi_velocity") if on(k)]
     get(d, "RK4", "Euler") == "Euler" || push!(bad, "RK4")
     parse(Float64, get(d, "basal_heat", "-1")) > 0 && push!(bad, "basal_heat")
     parse(Int, get(d, "dimensions", "2")) == 2 || push!(bad, "dimensions")
@@ -49,7 +48,6 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
     say("mandyocjll: $np MPI rank(s), mesh $(m.Nx) x $(m.Nz), $(particles_per_element(m)) particles per element")
     apply_seeds!(layers, seeds, strain_seeds, say)
     on(k) = lowercase(get(d, k, "false")) == "true"; num(k, x) = parse(Float64, get(d, k, string(x)))
-    on("sp_surface_tracking") && say("warning: sp_surface_tracking has not been ported yet; the surface will not be written")
     T_initial = Int(num("T_initial", 0))
     T0 = on("temperature_from_ascii") ? read_ascii_field(joinpath(dir, "input_temperature_0.txt")) : [initial_temperature(m, T_initial, i, k) for k in 0:m.Nz-1 for i in 0:m.Nx-1]
     mask = on("bcv_extern") ? read_ascii_field(joinpath(dir, "bcv_0.txt")) : nothing       # 1 = free, 0 = fixed
@@ -60,6 +58,8 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
     initial_strain(x, z, l) = random_strain * (unit_random(m.random_seed, hash((x, z)), 3) + 0.5)
     location = m.periodic_boundary ? :shim : :native                 # the periodic DMDA has a different node spacing
     s = Model(m, layers; temperature = (i, k) -> T0[k*m.Nx+i+1], velocity = (i, k) -> (V0[2(k*m.Nx+i)+1], V0[2(k*m.Nx+i)+2]), location, initial_strain, velocity_mask)
+    surface = Surface(d, m, layers, dir)
+    surface === nothing || say("surface: $(length(surface.x)) points" * (surface.processes ? ", sp_mode = $(surface.mode)" : ""))
     if rank == 0 && abspath(out) != abspath(dir)                     # tapIOca reads param.txt from the output folder
         mkpath(out); cp(joinpath(dir, "param.txt"), joinpath(out, "param.txt"); force = true)
     end
@@ -72,7 +72,7 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
     start = MPI.Wtime()
     initial_velocity!(s)
     say(@sprintf("step 0: %d nonlinear iterations, %.1f s", s.nonlinear_iterations, MPI.Wtime() - start))
-    write_output!(w, s, 0)
+    write_output!(w, s, 0; surface)
     for step in 1:step_max
         s.time + s.time_step_seconds <= time_max || break
         dt = s.time_step_seconds
@@ -82,10 +82,12 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
             rescale_velocity!(s, scale)
             say("velocity multiplied by $scale ($t Myr)")
         end
-        step!(s)
+        surface === nothing || update_surface_conditions!(surface, (s.time + dt) / SECONDS_PER_YEAR, say)
+        step!(s; surface)
         added, removed = add_remove_particles!(m, s.particle_swarm, s.da_Veloc, step; location)
+        surface === nothing || surface_step!(surface, m, s.layers, s.particle_swarm, dt)
         every = initial_print_step > 0 && s.time < initial_print_max_time ? initial_print_step : step_print
-        step % every == 0 && write_output!(w, s, step)
+        step % every == 0 && write_output!(w, s, step; surface)
         n = MPI.Allreduce(Int(LibPETSc.DMSwarmGetLocalSize(P, s.particle_swarm)), +, comm)
         say(@sprintf("step %d: t = %.4g yr, dt = %.4g yr, %d nonlinear iterations, %d particles (+%d -%d)", step, s.time / SECONDS_PER_YEAR,
             dt / SECONDS_PER_YEAR, s.nonlinear_iterations, n, added, removed))
