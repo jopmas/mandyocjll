@@ -62,7 +62,9 @@ Short runs of the examples in `examples/`:
 | `vanKeken1997_case1a`, `Crameri2012_case2`, `continental_rift`, `slab_detachment` | run, plots | no comparison yet beyond the tests above |
 | `continental_rift_with_surface_processes` from its SVG (161 × 31), each `sp_mode` | C++, 3 steps, 1 rank (Julia also with 4 ranks) | surface within 0.12 m (the C++ text files have 0.1 m resolution), density 3.5e-7, strain 1.1e-6 |
 | `rifting_sedimentation` from its SVG (121 × 41) with `magmatism`, solidus lowered to melt from the start | C++, 5 steps, 1 rank, with and without extraction (Julia also with 4 ranks) | Phi 1.2e-5, depletion 1e-6, temperature 2e-6, same extracted volume and position; see the bugs document |
-| `continental_rift_non_dimensional` | stops with the list of options not ported | |
+| `continental_rift_with_surface_processes` (161 × 31) with `multi_velocity` (velocity reversed and doubled at 15 kyr) | C++, 4 steps, 1 rank | velocity 8.8e-6, temperature 2.0e-6, strain 2.7e-6 |
+| the same with `basal_heat = 0.03` W/m2 | C++, 4 steps, 1 rank | temperature 2.0e-6 (bottom row 72.7 K above the next one in both), velocity 3.6e-6 |
+| `continental_rift_non_dimensional/model1` (161 × 31), `nondimensionalization = True` | C++ in the nondimensional mode, 4 steps, 1 rank, fields converted with the scales (`fssa_legacy`, large `dt_max`, no random strain) | velocity 6.9e-5, temperature 2.2e-5, pressure 7.7e-7; without the option, the Julia solution is identical |
 
 The punch does not converge in either code: the nonlinear iterations stop at 700 with `Xi` around 1e-8 (C++: 8e-9),
 above `Xi_min = 1e-12`, so the differences are at the level of the last iterations.

@@ -23,6 +23,6 @@ bash run_mac.sh                                           # or run_linux.sh; sba
 Without `--no-post-processing`, the script also creates the `.nc` files, the snapshots and the video. The weak seeds
 are layers of the drawing, so `-seed` is not needed.
 
-Needs the setting `code` of tapIOca (branch `feat/svg-scenario-inputs`). `continental_rift_non_dimensional` does not run in
-mandyocjll yet (tapioca-svg warns); `model2` and `model3` are the xz
+Needs the setting `code` of tapIOca (branch `feat/svg-scenario-inputs`). `continental_rift_non_dimensional` runs in
+mandyocjll in SI units (see `docs/parameters.md`); `model2` and `model3` are the xz
 section of 3D models.

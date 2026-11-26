@@ -394,6 +394,51 @@ A função é `PetscErrorCode`, mas não tem `return`. O compilador avisa (`-Wre
 
 **Sugestão** (não executada): `PetscFunctionReturn(0);` no fim da função e `CHKERRQ(ierr)` na chamada. **Julia:** não se aplica.
 
+# 27. Com `nondimensionalization = True`, o tempo mistura unidades
+
+**Onde:** `src/main.cpp:420-434` (`Calc_dt_calor`), `src/main.cpp:262` (laço do tempo), `src/main.cpp:477` e `530` (`rescaleVeloc`, `multi_veloc_change`), `src/sp.cpp:1162`, `1175` e `1188`, e `src/reader.cpp:574-592` e `783-789`.
+
+No modo adimensional, as velocidades e os comprimentos são adimensionais, então `dt_calor = 0.1*(dh/v)/seg_per_ano` é o passo adimensional dividido por `seg_per_ano`, e o fim de `Calc_dt_calor` o multiplica de novo. O tempo `tempo` acumula assim tempo adimensional (a escala `time0 = h0/veloc0` é cerca de 14 Myr no exemplo `continental_rift_non_dimensional`), mas é comparado com valores em anos ou Myr:
+
+- `dt_max` (anos) é comparado com o passo antes da multiplicação, um número da ordem de 1e-10, e nunca limita o passo;
+- `time_max` (anos) é comparado com o tempo adimensional: `time_max = 100e6` corresponde a mais de 1e15 Myr e na prática não para a simulação;
+- as mudanças de `scale_bcv.txt`, `multi_veloc.txt`, `sedimentation_rate.txt`, `sediment_layers.txt` e `base_level.txt` comparam o tempo adimensional com `1e6*t` (t em Myr) e acontecem no momento errado.
+
+Além disso, a linha `k` de `interfaces.txt` (difusividade de cada camada) não é dividida por `kappa0_scaled`, mas o termo de difusão é multiplicado por `diffusion_scaled = kappa0*time0/h0^2`; com a linha `k`, a difusividade das camadas fica multiplicada por `kappa0`. O código marca isso como pendente (`//!!! check in the case of variable kappa`). As saídas (`time_*.txt` e os campos) ficam adimensionais.
+
+Por leitura, outras partes também misturam unidades no modo adimensional: os processos superficiais (`sp_d_c` e as taxas em m²/ano com comprimentos e passo adimensionais) e o magmatismo (`magmatism_dTdP`, em K/Pa, multiplicado pela pressão adimensional).
+
+Duas tolerâncias dependem das unidades e fazem a solução mudar com a opção: `denok` (item 28) e o `g` a mais do FSSA (item 7: o peso efetivo é $\theta g/2$, 2,5 $\theta$ em SI e 0,5 $\theta$ com $g = 1$).
+
+**Evidência:** o exemplo `continental_rift_non_dimensional/model1` em 161 × 31, 4 passos, 1 processo, `solver = direct`, `dt_max` grande (o C++ não o aplica no modo adimensional) e sem deformação inicial aleatória. Os campos adimensionais foram convertidos com as escalas de `dimensional_convertion.txt`:
+
+| Comparação (erro relativo da velocidade) | Passo 0 | Passo 1 | Passo 4 |
+|:-----------------------------------------------|:-:|:-:|:-:|
+| C++ adimensional × C++ dimensional, mesmo `denok = 1e-5` | 1,0 | 1,0 | 1,0 |
+| o mesmo, com `denok` equivalente (7,9e-14 em SI) | 1,9e-6 | 1,3e-1 | 9,9e-2 |
+
+Com o `denok` equivalente, os dois modos coincidem no passo 0; a diferença que aparece no passo 1 é a do FSSA. O passo de tempo é o mesmo (84,6 mil anos) nos dois modos.
+
+**Sugestão** (não executada): manter o tempo em segundos dimensionais no laço (`tempo*time0_scaled`) e converter só os termos das equações, ou adimensionalizar também `dt_max`, `time_max` e os tempos dos arquivos; dividir `conductivity[i]` por `kappa0_scaled`; converter `denok` e corrigir o FSSA (item 7). **Julia:** com `nondimensionalization = True`, as equações são resolvidas em SI, que é a mesma solução, e `denok` e o `g` do FSSA de `fssa_legacy` são convertidos. Assim `dt_max`, `time_max`, os arquivos com tempos e a linha `k` funcionam como no modo dimensional. As saídas ficam em SI, e as escalas são escritas em `dimensional_convertion.txt`. Com `fssa_legacy = true`, o Julia repete o C++ adimensional (velocidade 7e-5 e temperatura 2e-5 no passo 4, em SI).
+
+# 28. `denok` é um limite absoluto e depende das unidades
+
+**Onde:** `src/DMv.cpp:608-614`.
+
+As iterações de Uzawa param quando `denok`, o quadrado da norma de $G^T v$ (o divergente integrado, em m²/s em SI), fica abaixo de `denok_min`. O limite é absoluto: em SI esse resíduo é da ordem de 1e-7 a 1e-11 nos modelos de litosfera, então o padrão `denok = 1e-4` (e o 1e-5 do exemplo `continental_rift_non_dimensional`) para o Uzawa já na iteração 0 e deixa a velocidade compressível. Com `nondimensionalization = True` o mesmo valor é 1/(veloc0·h0)² = 1,3e8 vezes mais exigente.
+
+**Evidência:** no mesmo caso do item 27, passo 0:
+
+| Rodada | `denok` | Iterações de Uzawa | $\lVert\nabla\cdot v\rVert/\lVert\nabla v\rVert$ |
+|:------------------|:-:|:-:|:-:|
+| C++ dimensional | 1e-5 | 9 | 0,12 |
+| C++ dimensional | 7,9e-14 | 158 | 2,6e-3 |
+| C++ adimensional | 1e-5 | 158 | 2,6e-3 |
+
+Os cenários do tapioca usam `denok = 1e-14` e não são afetados.
+
+**Sugestão** (não executada): usar um critério relativo, por exemplo `denok` dividido pelo resíduo inicial ou por $\lVert G\rVert\,\lVert v\rVert$, ou ao menos mudar o padrão para 1e-14. **Julia:** repete o C++, converte `denok` no modo adimensional e avisa quando `denok` > 1e-10.
+
 # Observações a confirmar
 
 - **Nível de base médio:** `sp_evaluate_adjusted_mean_elevation_with_sea_level` (`src/sp.cpp:324`) faz a média só do primeiro quarto dos pontos (`seq_surface_size / 2 / 4`), isto é, da borda esquerda do modelo. Vale confirmar se é intencional. O Julia repete.
@@ -403,6 +448,8 @@ A função é `PetscErrorCode`, mas não tem `return`. O compilador avisa (`-Wre
 - **Viscosidade com fusão:** o fator `X_OH*X_m` (Lu & Huismans, 2021, com as constantes fixas no código) é aplicado depois dos limites de viscosidade, então a viscosidade pode passar de `viscosity_max` (até 5 vezes) ou ficar abaixo de `viscosity_min`. A densidade não muda com a fusão nem com a depleção. O Julia repete.
 - **Extração sem a superfície:** `magmatism_extraction = on` sem `sp_surface_tracking` não faz nada e não avisa. O Julia avisa.
 - **Superfície acima do topo do modelo:** os pontos da superfície que saem da malha (por exemplo, numa extrusão grande) são descartados pela migração do swarm, e a reamostragem preenche o buraco. O Julia mantém esses pontos e avisa.
+- **`basal_heat`:** a condutividade é a do manto (`kappa*RHOM*c`), não a da camada da base, e a temperatura fixa da base (`bot_temperature`) é substituída depois de cada solução. O Julia repete.
+- **`multi_velocity`:** o novo `input_velocity_<n>.txt` substitui também os valores de contorno, então um fator de `scale_bcv.txt` aplicado antes se perde. Sem `velocity_from_ascii`, a velocidade atual vira o contorno. O Julia repete.
 - **Ponto exatamente em `px` na reamostragem:** é ignorado pelas desigualdades estritas (`cx_aux < px`, `cx_aux > px`). O Julia usa esse ponto; a diferença só aparece nesse caso.
 - **Jacobiano do elemento térmico:** `montaKeThermal_*` omite o fator 1/4. Como ele aparece em todos os termos, a solução não muda.
 - **Reologia 7:** a viscosidade é `visco_ref*A*exp(-(QE+VE*P)/(R*T))`, que cresce com a temperatura se `QE` é positivo. Vale confirmar se é intencional. O Julia repete a fórmula.

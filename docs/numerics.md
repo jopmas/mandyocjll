@@ -32,6 +32,10 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
   equation; and, at the output steps, the extraction of the new melt to the surface as a Gaussian (sigma = 10 km)
   above the shallowest melting particle, as `magmatic_layer` (`magmatic.cpp`). As in the C++ code, the melt is
   computed at each particle update, with the temperature of the mesh (bug 22).
+- **Inputs over time**: `scale_bcv.txt` (velocity factors) and `multi_velocity` (a new `input_velocity_<n>.txt`,
+  also as the boundary values, at each time of `multi_veloc.txt`), both followed by the viscosity ramp if
+  `initial_dynamic_range`; `basal_heat`, the heat flow at the base, imposed after each thermal solve on the bottom
+  row with the conductivity of the mantle.
 - **Time step**: 10% of the time to cross an element at the largest velocity, limited by `dt_max`.
 
 ## Differences from the C++ code
@@ -52,6 +56,7 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
 | Surface | a swarm split among the ranks: steps in the initial surface, lost and duplicated points and particles not updated with more than one rank (bugs 18-21) | an array replicated on every rank: independent of the number of ranks |
 | Melt extraction | at x = 0 if no particle melted in the last update (bug 25); a tie goes to the highest rank | as the C++ code, but a tie (depths within 1 cm) goes to the smallest x: independent of the number of ranks |
 | Latent heat | `dS = 400` whatever `magmatism_dS` is (bug 23) | `magmatism_dS` |
+| `nondimensionalization` | equations in units of the depth, maximum viscosity, gravity, mantle density and diffusivity; the time step, `time_max` and the times of the input files mix these units with years (bug 27) | equations in SI units (same solution), outputs in SI, scales in `dimensional_convertion.txt` |
 | Outputs | text files per step, organized by tapIOca | zarr stores |
 
 With these differences, the results of the two codes are not bit-identical. See [validation.md](validation.md) for

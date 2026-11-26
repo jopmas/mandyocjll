@@ -339,3 +339,8 @@ Magmatismo,Phi,melt_fraction,renomear,0,,,Campo das partículas e da malha
 Magmatismo,dPhi,melt_increment,renomear,0,,,Campo das partículas e da malha
 Magmatismo,x_magma_high / z_magma_high,shallowest_melt_x / shallowest_melt_z,renomear,0,,,
 Magmatismo,previous_magmatic_volume,previous_melt_volume,renomear,0,,,
+Aquecimento,basal_heat,basal_heat_flow,renomear,0,basal_heat,,Fluxo de calor na base (W/m2)
+Velocidade,mv_time,velocity_files,renomear,0,multi_velocity,,Tempos de multi_veloc.txt
+Velocidade,i_veloc,velocity_file,renomear,0,,,Número do próximo input_velocity_<n>.txt
+Adimensionalização,denok_min (modo adimensional),uzawa_residual_tolerance,manter,0,denok,,Convertido para SI com (veloc0*h0)^2
+Adimensionalização,gravity no FSSA (modo adimensional),fssa_legacy_gravity_unit,novo,0,,,1/g0 com nondimensionalization e fssa_legacy
