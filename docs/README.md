@@ -7,6 +7,8 @@ names and units of the NetCDF files of [tapIOca](https://github.com/jopmas/tapio
 
 | Page | Contents |
 |---|---|
+| [tutorial.md](tutorial.md) | from a scenario to the figures: inputs with tapIOca or Python, running, reading the outputs |
+| [apostila/apostila_mandyocjll.pdf](apostila/apostila_mandyocjll.pdf) | handbook (in Portuguese): the model, the code, a tutorial and the validation, with figures |
 | [installation.md](installation.md) | Julia, PETSc, MPI, `make` and the compiled image |
 | [running.md](running.md) | the `mandyocjll` command, its options, MPI, tapIOca run scripts |
 | [parameters.md](parameters.md) | what is read from `param.txt` and `interfaces.txt`, and what is not ported yet |

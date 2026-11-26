@@ -355,7 +355,7 @@ cd inputs
 bash run_mac.sh
 ```
 
-O script roda o mandyocjll (o log vai para `FD.out`) e, se a rodada terminar sem erro, faz o pós-processamento: cria os `.nc` com `tools/zarr2nc.py`, gera os *snapshots* e o vídeo com os scripts de `post_processing` e compacta o cenário num zip. O rift deste tutorial (161 × 31 nós, 2.000 passos) levou poucos minutos com 4 processos em um Mac Mini.
+O script roda o mandyocjll (o log vai para `FD.out`) e, se a rodada terminar sem erro, faz o pós-processamento: cria os `.nc` com `tools/zarr2nc.py`, gera os *snapshots* e o vídeo com os scripts de `post_processing` e compacta o cenário num zip. O rift deste tutorial (161 × 31 nós, 2.000 passos de 10 mil anos) levou 211 s com 4 processos num Mac mini.
 
 ## Processar as saídas
 
@@ -384,7 +384,7 @@ python ~/opt/mandyocjll/tools/zarr2nc.py .               # todas as variáveis
 python ~/opt/mandyocjll/tools/zarr2nc.py . temperature   # só a temperatura
 ```
 
-![Litologia do rift continental do tutorial em três tempos (camadas do tapIOca, malha de 10 km, 4 processos).](figures/fig_tutorial_lithology.png)
+![Litologia do rift continental do tutorial em 0, 10 e 20 Myr (malha de 10 km, 4 processos). Com essa malha grossa, o afinamento da litosfera ainda é discreto em 20 Myr; malhas mais finas localizam a deformação mais cedo.](figures/fig_tutorial_lithology.png)
 
 ![Snapshots da litologia gerados pelo pós-processamento do script de execução (`plot_snapshots.py`).](figures/fig_tutorial_snapshots.png)
 
