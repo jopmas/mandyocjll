@@ -219,10 +219,10 @@ end
 
 """
 Particles crossed by the surface (sp_update_surface_swarm_particles_properties): air below it becomes the active
-sediment layer (a2l) and rock above it becomes air. As in the C++ code, the height is the mean of the two surface
+sediment layer (a2l; `new_layer`, the magmatic layer after an extraction) and rock above it becomes air. As in the C++ code, the height is the mean of the two surface
 points around the particle.
 """
-function update_particles_with_surface!(sf::Surface, m, layers, swarm)
+function update_particles_with_surface!(sf::Surface, m, layers, swarm; new_layer = sf.active_sediment_layer)
     air = length(layers.layer_density) - 1                       # n_interfaces
     dxs = m.Lx / (length(sf.z) - 1)
     changed = 0
@@ -235,7 +235,7 @@ function update_particles_with_surface!(sf::Surface, m, layers, swarm)
             i = clamp(trunc(Int, px / dxs), 0, length(sf.z) - 2)
             surface = sf.z[i+1] * 0.5 + sf.z[i+2] * 0.5
             if sf.air_to_land && layer[p] == air && pz < surface
-                layer[p] = sf.active_sediment_layer; factor[p] = layers.layer_viscosity_factor[sf.active_sediment_layer+1]
+                layer[p] = new_layer; factor[p] = layers.layer_viscosity_factor[new_layer+1]
                 strain[p] = sf.sediment_strain; changed += 1
             end
             if layer[p] != air && pz > surface

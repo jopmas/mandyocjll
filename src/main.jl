@@ -4,7 +4,7 @@ using Printf
 # options that change the result and have not been ported yet: stop instead of ignoring them
 function check_unsupported(d)
     on(k) = lowercase(get(d, k, "false")) in ("true", "on")
-    bad = [k for k in ("magmatism", "nondimensionalization", "multi_velocity") if on(k)]
+    bad = [k for k in ("nondimensionalization", "multi_velocity") if on(k)]
     get(d, "RK4", "Euler") == "Euler" || push!(bad, "RK4")
     parse(Float64, get(d, "basal_heat", "-1")) > 0 && push!(bad, "basal_heat")
     parse(Int, get(d, "dimensions", "2")) == 2 || push!(bad, "dimensions")
@@ -60,16 +60,20 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
     s = Model(m, layers; temperature = (i, k) -> T0[k*m.Nx+i+1], velocity = (i, k) -> (V0[2(k*m.Nx+i)+1], V0[2(k*m.Nx+i)+2]), location, initial_strain, velocity_mask)
     surface = Surface(d, m, layers, dir)
     surface === nothing || say("surface: $(length(surface.x)) points" * (surface.processes ? ", sp_mode = $(surface.mode)" : ""))
+    extraction = m.use_magmatism && m.use_melt_extraction && surface !== nothing ? MeltExtraction() : nothing
+    m.use_magmatism && m.use_melt_extraction && surface === nothing &&
+        say("magmatism_extraction = on needs sp_surface_tracking = True: the melt is not extracted (as in the C++ code)")
     if rank == 0 && abspath(out) != abspath(dir)                     # tapIOca reads param.txt from the output folder
         mkpath(out); cp(joinpath(dir, "param.txt"), joinpath(out, "param.txt"); force = true)
     end
     MPI.Barrier(comm)
     w = OutputWriter(out; export_thermal_diffusivity = on("export_thermal_diffusivity"), export_lithology = on("export_lithology"),
-        write_particles = on("print_step_files"))
+        write_particles = on("print_step_files"), magmatism = m.use_magmatism)
     step_max, time_max = Int(num("step_max", 1e9)), num("time_max", 1e30) * SECONDS_PER_YEAR
     step_print = Int(num("step_print", 10)); initial_print_step = Int(num("initial_print_step", 0))
     initial_print_max_time = num("initial_print_max_time", 1e6) * SECONDS_PER_YEAR
     start = MPI.Wtime()
+    warned_above_top = false
     initial_velocity!(s)
     say(@sprintf("step 0: %d nonlinear iterations, %.1f s", s.nonlinear_iterations, MPI.Wtime() - start))
     write_output!(w, s, 0; surface)
@@ -87,6 +91,14 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
         added, removed = add_remove_particles!(m, s.particle_swarm, s.da_Veloc, step; location)
         surface === nothing || surface_step!(surface, m, s.layers, s.particle_swarm, dt)
         every = initial_print_step > 0 && s.time < initial_print_max_time ? initial_print_step : step_print
+        if step % every == 0
+            # as in the C++ code, the melt is extracted only at the output steps
+            extraction === nothing || extract_melt!(extraction, s, surface, say)
+        end
+        if surface !== nothing && !warned_above_top && maximum(surface.z) > 0
+            # the C++ code drops the points of its surface swarm that leave the mesh; here they are kept
+            say(@sprintf("warning: the surface is above the top of the model (z = %.4g m)", maximum(surface.z))); warned_above_top = true
+        end
         step % every == 0 && write_output!(w, s, step; surface)
         n = MPI.Allreduce(Int(LibPETSc.DMSwarmGetLocalSize(P, s.particle_swarm)), +, comm)
         say(@sprintf("step %d: t = %.4g yr, dt = %.4g yr, %d nonlinear iterations, %d particles (+%d -%d)", step, s.time / SECONDS_PER_YEAR,

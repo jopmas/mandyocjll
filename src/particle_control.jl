@@ -86,7 +86,8 @@ function add_remove_particles!(m, particle_swarm, da_Veloc, step; location = :na
     end
     # properties of the source particles, read before the removal
     properties = [(name, T, with_field(a -> a[sources], particle_swarm, name, T)) for (name, T) in
-        (("layer", PInt), ("geoq_fac", Float64), ("strain_fac", Float64), ("strain_rate_fac", Float64))]
+        (("layer", PInt), ("geoq_fac", Float64), ("strain_fac", Float64), ("strain_rate_fac", Float64),
+        ((name, Float64) for name in melt_field_names(m))...)]
     for p in sort(particles_to_remove; rev = true)
         LibPETSc.DMSwarmRemovePointAtIndex(petsclib, particle_swarm, PInt(p - 1))
     end

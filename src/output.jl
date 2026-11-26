@@ -60,7 +60,9 @@ end
 # name => (type, unit), as in meshes2netcdf.jl
 const OUTPUT_VARIABLES = ["density" => (Float32, "kg/m3"), "viscosity" => (Float64, "Pa.s"), "pressure" => (Float32, "Pa"),
     "strain" => (Float64, "dimensionless"), "strain_rate" => (Float64, "1/s"), "temperature" => (Float32, "deg C"),
-    "velocity" => (Float64, "m/s"), "heat" => (Float64, "W/kg"), "thermal_diffusivity" => (Float64, "m2/s")]
+    "velocity" => (Float64, "m/s"), "heat" => (Float64, "W/kg"), "thermal_diffusivity" => (Float64, "m2/s"),
+    "Phi" => (Float64, "dimensionless"), "dPhi" => (Float64, "dimensionless"), "X_depletion" => (Float64, "dimensionless")]
+const MELT_OUTPUTS = ("Phi", "dPhi", "X_depletion")    # written with the magmatism
 const TIME_CHUNK = 1024                  # time and step are in a single chunk, rewritten at each output
 
 mutable struct OutputWriter
@@ -73,8 +75,9 @@ mutable struct OutputWriter
     steps::Vector{Int}
     seconds::Float64                     # time spent writing
 end
-function OutputWriter(path; level = 1, export_thermal_diffusivity = false, export_lithology = false, write_particles = false)
-    names = [k for (k, _) in OUTPUT_VARIABLES if k != "thermal_diffusivity" || export_thermal_diffusivity]
+function OutputWriter(path; level = 1, export_thermal_diffusivity = false, export_lithology = false, write_particles = false,
+    magmatism = false)
+    names = [k for (k, _) in OUTPUT_VARIABLES if (k != "thermal_diffusivity" || export_thermal_diffusivity) && (magmatism || !(k in MELT_OUTPUTS))]
     return OutputWriter(path, level, names, export_lithology, write_particles, Float64[], Int[], 0.0)
 end
 
@@ -210,7 +213,8 @@ function write_output!(w::OutputWriter, s::Model, step; surface = nothing)
         "pressure" => (s.pressure_thermal_mesh, s.da_Thermal, 1), "strain" => (f.strain_field, s.da_Thermal, 1),
         "strain_rate" => (f.strain_rate_field, s.da_Thermal, 1), "temperature" => (s.temperature, s.da_Thermal, 1),
         "velocity" => (s.velocity_next, s.da_Veloc, 2), "heat" => (f.radiogenic_heat_field, s.da_Thermal, 1),
-        "thermal_diffusivity" => (f.thermal_diffusivity_field, s.da_Thermal, 1))
+        "thermal_diffusivity" => (f.thermal_diffusivity_field, s.da_Thermal, 1), "Phi" => (f.melt_fraction_field, s.da_Thermal, 1),
+        "dPhi" => (f.melt_increment_field, s.da_Thermal, 1), "X_depletion" => (f.depletion_field, s.da_Thermal, 1))
     info = Dict(OUTPUT_VARIABLES)
     for (n, name) in enumerate(w.variables)                          # each variable is written by one rank
         vec, da, dof = sources[name]; root = (n - 1) % np; T, u = info[name]

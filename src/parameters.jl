@@ -53,6 +53,13 @@ Base.@kwdef struct ModelParameters
     use_shear_heating::Bool = false            # WITH_SHEAR_H
     shear_heating_scale_factor::Float64 = 1.0  # Xi_shear
     temperature_difference::Float64 = 1500.0   # Delta_T
+    use_magmatism::Bool = false                # magmatism_flag
+    use_melt_extraction::Bool = true           # magmatism_extraction_flag
+    magmatic_layer::Int = 0                    # magmatic_layer (layer of the extruded magma)
+    solidus_reference_temperature::Float64 = 1080.0           # Ts0 (deg C)
+    solidus_pressure_gradient::Float64 = 3.4e-3 / (3300.0 * 10)  # dTsdP (K/Pa)
+    solidus_depletion_gradient::Float64 = 440.0               # dTsdX (K)
+    melting_entropy::Float64 = 400.0           # dS (J/kg/K)
     initial_dynamic_range::Bool = false        # initial_dynamic_range
     max_time_step::Float64 = 1.0e6             # dt_MAX (years)
     time_step_subdivision::Float64 = 1.0       # sub_division_time_step

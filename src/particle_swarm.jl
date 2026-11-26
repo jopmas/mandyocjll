@@ -79,6 +79,9 @@ end
 const SWARM_FIELDS = (("itag", LibPETSc.PETSC_INT), ("layer", LibPETSc.PETSC_INT),
     ("geoq_fac", LibPETSc.PETSC_DOUBLE), ("strain_fac", LibPETSc.PETSC_DOUBLE),
     ("strain_rate_fac", LibPETSc.PETSC_DOUBLE), ("cont", LibPETSc.PETSC_INT))
+# registered only with the magmatism, as in the C++ code: depletion (X), melt fraction (Phi) and its last increment (dPhi)
+const MELT_FIELDS = ("X", "Phi", "dPhi")
+melt_field_names(m) = m.use_magmatism ? MELT_FIELDS : ()
 
 "Calls `f` with the field as a Julia Array and returns it to PETSc, even if `f` throws."
 function with_field(f, swarm, name, ::Type{T}) where {T}
@@ -115,6 +118,9 @@ function create_particle_swarm(m::ModelParameters, da_Veloc; location = :shim, i
     for (name, type) in SWARM_FIELDS
         LibPETSc.DMSwarmRegisterPetscDatatypeField(petsclib, particle_swarm, name, PInt(1), type)
     end
+    for name in melt_field_names(m)
+        LibPETSc.DMSwarmRegisterPetscDatatypeField(petsclib, particle_swarm, name, PInt(1), LibPETSc.PETSC_DOUBLE)
+    end
     LibPETSc.DMSwarmFinalizeFieldRegister(petsclib, particle_swarm)
 
     dx, dz = element_size_x(m), element_size_z(m)                   # dx_const, dz_const
@@ -137,6 +143,9 @@ function create_particle_swarm(m::ModelParameters, da_Veloc; location = :shim, i
             layer[p], viscosity_factor[p] = init(coor[2p-1], coor[2p], id)
         end
     end end end end end
+    for (name, value) in zip(melt_field_names(m), (1.0, 0.0, 0.0))
+        with_field(a -> (a .= value; nothing), particle_swarm, name, Float64)
+    end
     LibPETSc.DMSwarmMigrate(petsclib, particle_swarm, LibPETSc.PETSC_TRUE)
     return particle_swarm, cell_dm
 end

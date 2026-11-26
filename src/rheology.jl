@@ -1,5 +1,5 @@
 # Rheology (calc_visc.cpp, moveSwarm, Swarm2Mesh_2d, veloc_total, calc_pressure_2d, shift_pressure_2d).
-# Include after stokes.jl. Dimensional only; no magmatism.
+# Include after stokes.jl. Dimensional only.
 
 "Properties of each layer (interfaces.txt), from the deepest to the shallowest."
 Base.@kwdef struct LayerProperties
@@ -87,13 +87,27 @@ function particle_viscosity(m::ModelParameters, range::ViscosityRange, l::LayerP
 end
 
 # ---- moveSwarm: T, P, strain, viscosity and (Euler) position ----------------
+"Calls f with the melt fields of the particles (X, Phi, dPhi), or with nothing without the magmatism."
+function with_melt_fields(f, m, swarm)
+    m.use_magmatism || return f(nothing)
+    with_field(swarm, "X", Float64) do depletion
+        with_field(swarm, "Phi", Float64) do melt_fraction
+            with_field(swarm, "dPhi", Float64) do melt_increment
+                f((depletion, melt_fraction, melt_increment))
+            end
+        end
+    end
+end
+
 """
-Updates the strain rate, the accumulated strain and the viscosity of the particles, and moves them
+Updates the strain rate, the accumulated strain, the viscosity and the melt of the particles, and moves them
 (Euler) if `move`. `local_velocity` is from `da_advection`. Without `move`, dt only accumulates strain.
+Returns the position (x, z) of the shallowest particle that melted in this call (x_magma_high, z_magma_high),
+or (0, -depth) if none did.
 """
 function update_particles!(m, range, layers, swarm, da_advection, local_velocity, da_Thermal, local_temperature,
     local_pressure_thermal_mesh, dt; move = false)
-    dx, dz = element_size_x(m), element_size_z(m); e = m.boundary_offset
+    shallowest = Ref((0.0, -m.domain_depth))
     PETSc.with_local_array!(local_velocity, local_temperature, local_pressure_thermal_mesh; write = false) do v, t, pr
         V, T, Pn = local_view(da_advection, v, 2), local_view(da_Thermal, t), local_view(da_Thermal, pr)
         with_field(swarm, PIC_COORDINATES, Float64) do coor
@@ -101,14 +115,51 @@ function update_particles!(m, range, layers, swarm, da_advection, local_velocity
         with_field(swarm, "geoq_fac", Float64) do viscosity
         with_field(swarm, "strain_fac", Float64) do strain
         with_field(swarm, "strain_rate_fac", Float64) do strain_rate
-            update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain, strain_rate, dt, move)
-        end end end end end
+        with_melt_fields(m, swarm) do melt
+            shallowest[] = update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain, strain_rate, melt, dt, move)
+        end end end end end end
     end
     move && LibPETSc.DMSwarmMigrate(petsclib, swarm, LibPETSc.PETSC_TRUE)
+    return shallowest[]
 end
 
-function update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain, strain_rate, dt, move)
+"""
+Melting of a particle (moveSwarm): increment of the melt fraction that brings the temperature to the solidus,
+which rises with the pressure and the depletion. As in the C++ code, it is computed in single precision and at
+each call (each nonlinear iteration and each substep), with the temperature of the mesh. Returns dPhi.
+"""
+function melt_particle!(m, melt, p, Tp, Pp)
+    X, Phi, dPhi = melt
+    Ts = Float32(m.solidus_reference_temperature + m.solidus_pressure_gradient * Pp + m.solidus_depletion_gradient * (X[p] - 1))
+    facX = Float32(m.solidus_depletion_gradient * X[p] / (1 - Phi[p]))
+    L = Float32(Tp * m.melting_entropy / m.heat_capacity)
+    dphi = max(Float32((Tp - Ts) / (L + facX)), 0.0f0)
+    dPhi[p] = dphi
+    Phi[p] += dphi
+    X[p] = 1.0 / (1.0 - Phi[p])
+    return dphi
+end
+
+"""
+Viscosity factor of the depletion and of the melt (Appendix A of Lu & Huismans, 2021), with the constants of the
+C++ code (Omega = 5, Phi_lim = 0.02, a = 45, Phi_ret = 0.01). It is applied after the viscosity limits.
+"""
+function melt_viscosity_factor(Phi)
+    Omega, Phi_lim, a_magma, Phi_ret = 5.0f0, 0.02f0, 45.0f0, 0.01f0
+    X_OH = min(Float32(1.0 + (Omega - 1) * Phi / Phi_lim), Omega)
+    Phi_aux = Float32(Phi < Phi_ret ? Phi : Float64(Phi_ret))
+    X_m = Float32(exp(-a_magma * Phi_aux))
+    return Float64(X_OH * X_m)
+end
+
+# Depths closer than MELT_TIE_DEPTH are a tie, won by the smallest x: the rounding, which changes with the number
+# of ranks, does not choose between particles at the same depth (the C++ code takes the first particle of the rank).
+const MELT_TIE_DEPTH = 0.01              # (m)
+shallower(x, z, x0, z0) = z > z0 + MELT_TIE_DEPTH || (z >= z0 - MELT_TIE_DEPTH && x < x0)
+
+function update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain, strain_rate, melt, dt, move)
     dx, dz = element_size_x(m), element_size_z(m); e = m.boundary_offset
+    shallowest_x, shallowest_z = 0.0, -m.domain_depth           # x_magma_high, z_magma_high
     image(i, A, d) = m.periodic_boundary ? (i < firstindex(A, d) ? i + m.Nx : i + 1 > lastindex(A, d) ? i - m.Nx : i) : i
     for p in eachindex(layer)
         x = clamp(coor[2p-1], e, m.Lx - e); z = clamp(coor[2p], e - m.domain_depth, -e)
@@ -142,7 +193,13 @@ function update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain
             strain[p] = max(s, 0.0)
         end
         viscosity[p] = particle_viscosity(m, range, layers, layer[p] + 1, Tp, Pp, z, e2, strain[p])
+        if melt !== nothing
+            dphi = melt_particle!(m, melt, p, Tp, Pp)
+            dphi > 0 && shallower(x, z, shallowest_x, shallowest_z) && ((shallowest_x, shallowest_z) = (x, z))
+            viscosity[p] *= melt_viscosity_factor(melt[2][p])
+        end
     end
+    return shallowest_x, shallowest_z
 end
 
 # ---- Swarm2Mesh_2d -------------------------------------------------------------
@@ -155,22 +212,26 @@ struct MeshFields{V}
     viscosity_factor::V                  # geoq
     thermal_diffusivity_field::V         # geoq_kappa
     density_variation::V                 # dRho
+    depletion_field::V                   # X_depletion
+    melt_fraction_field::V               # Phi
+    melt_increment_field::V              # dPhi
 end
-MeshFields(da) = MeshFields((v = LibPETSc.DMCreateGlobalVector(P, da); LibPETSc.VecZeroEntries(P, v); v) for _ in 1:7)
+MeshFields(da) = MeshFields((v = LibPETSc.DMCreateGlobalVector(P, da); LibPETSc.VecZeroEntries(P, v); v) for _ in 1:10)
 MeshFields(g::Base.Generator) = MeshFields(collect(g)...)
 
 function particles_to_mesh!(m, layers, swarm, da_Thermal, f::MeshFields)
     lv() = (v = LibPETSc.DMCreateLocalVector(P, da_Thermal); LibPETSc.VecZeroEntries(P, v); v)
-    L = ntuple(_ -> lv(), 8)             # rho, H, strain rate, weight | viscosity, kappa, count | strain
+    L = ntuple(_ -> lv(), 11)            # rho, H, strain rate, weight | viscosity, kappa, count | strain | X, Phi, dPhi
     dx, dz = element_size_x(m), element_size_z(m)
     harmonic = m.use_viscosity_harmonic_mean
     PETSc.with_local_array!(L...) do arrays...
-        R, H, S, W, Vi, Ka, N, E = map(a -> local_view(da_Thermal, a), arrays)
+        R, H, S, W, Vi, Ka, N, E, XD, PH, DP = map(a -> local_view(da_Thermal, a), arrays)
         with_field(swarm, PIC_COORDINATES, Float64) do coor
         with_field(swarm, "layer", PInt) do layer
         with_field(swarm, "geoq_fac", Float64) do visc
         with_field(swarm, "strain_rate_fac", Float64) do rate
         with_field(swarm, "strain_fac", Float64) do strain
+        with_melt_fields(m, swarm) do melt
             for p in eachindex(layer)
                 x, z = coor[2p-1], coor[2p] + m.domain_depth
                 i = clamp(trunc(Int, x / dx), 0, m.Nx - 2); k = clamp(trunc(Int, z / dz), 0, m.Nz - 2)
@@ -179,15 +240,17 @@ function particles_to_mesh!(m, layers, swarm, da_Thermal, f::MeshFields)
                 m.use_shear_heating && (h += m.shear_heating_scale_factor * 4visc[p] * rate[p]^2 / layers.layer_density[n])
                 for (ii, kk, w) in ((i, k, (1 - rx) * (1 - rz)), (i + 1, k, rx * (1 - rz)), (i, k + 1, (1 - rx) * rz), (i + 1, k + 1, rx * rz))
                     R[ii, kk] += w * layers.layer_density[n]; H[ii, kk] += w * h; S[ii, kk] += w * rate[p]; E[ii, kk] += w * strain[p]; W[ii, kk] += w
+                    melt === nothing || (XD[ii, kk] += w * melt[1][p]; PH[ii, kk] += w * melt[2][p]; DP[ii, kk] += w * melt[3][p])
                 end
                 kap = layers.layer_thermal_conductivity[n]
                 Vi[i, k] += harmonic ? 1 / visc[p] : visc[p]; Ka[i, k] += harmonic ? 1 / kap : kap; N[i, k] += 1
             end
-        end end end end end
+        end end end end end end
     end
     g = LibPETSc.DMCreateGlobalVector(P, da_Thermal); d = LibPETSc.DMCreateGlobalVector(P, da_Thermal)
     for (num, den, out, inv) in ((L[1], L[4], f.density_field, false), (L[2], L[4], f.radiogenic_heat_field, false),
-        (L[3], L[4], f.strain_rate_field, false), (L[8], L[4], f.strain_field, false), (L[5], L[7], f.viscosity_factor, harmonic), (L[6], L[7], f.thermal_diffusivity_field, harmonic))
+        (L[3], L[4], f.strain_rate_field, false), (L[8], L[4], f.strain_field, false), (L[5], L[7], f.viscosity_factor, harmonic), (L[6], L[7], f.thermal_diffusivity_field, harmonic),
+        (m.use_magmatism ? ((L[9], L[4], f.depletion_field, false), (L[10], L[4], f.melt_fraction_field, false), (L[11], L[4], f.melt_increment_field, false)) : ())...)
         for (a, b) in ((num, g), (den, d))
             LibPETSc.VecZeroEntries(P, b); LibPETSc.DMLocalToGlobal(P, da_Thermal, a, LibPETSc.ADD_VALUES, b)
         end
@@ -303,6 +366,7 @@ mutable struct Model{D, V, S, F, TS, SS}
     time_step_seconds::Float64           # dt_calor_sec
     time::Float64                        # tempo (s)
     nonlinear_iterations::Int
+    shallowest_melt::Tuple{Float64, Float64}   # x_magma_high, z_magma_high (of this rank, last particle update)
 end
 
 function Model(m, layers; temperature, velocity, velocity_mask = nothing, location = :native, initial_strain = (x, z, layer) -> 0.0)
@@ -336,15 +400,15 @@ function Model(m, layers; temperature, velocity, velocity_mask = nothing, locati
     end
     return Model(m, layers, ViscosityRange(m), dv, dT, da, swarm, cell, MeshFields(dT), T, V, Vn, zero_vec(dv), pr, pn,
         LibPETSc.DMCreateLocalVector(P, da), LibPETSc.DMCreateLocalVector(P, dT), LibPETSc.DMCreateLocalVector(P, dT),
-        stokes, ThermalSolver(m, dT, dv, T), false, 0.0, 0.0, 0)
+        stokes, ThermalSolver(m, dT, dv, T), false, 0.0, 0.0, 0, (0.0, -m.domain_depth))
 end
 
 function particles!(s::Model, dt; move = false)
     global_to_local(s.da_advection, s.velocity_advection, s.local_velocity_advection)
     global_to_local(s.da_Thermal, s.temperature, s.local_temperature)
     global_to_local(s.da_Thermal, s.pressure_thermal_mesh, s.local_pressure_thermal_mesh)
-    update_particles!(s.m, s.range, s.layers, s.particle_swarm, s.da_advection, s.local_velocity_advection, s.da_Thermal,
-        s.local_temperature, s.local_pressure_thermal_mesh, dt; move)
+    s.shallowest_melt = update_particles!(s.m, s.range, s.layers, s.particle_swarm, s.da_advection, s.local_velocity_advection,
+        s.da_Thermal, s.local_temperature, s.local_pressure_thermal_mesh, dt; move)
 end
 
 "One assembly and solve (build_veloc + solve_veloc)."
@@ -444,7 +508,8 @@ end
 "One time step: temperature, velocity and advection (4 Euler substeps, as in the C++ code)."
 function step!(s::Model; substeps = 4, surface = nothing)
     dt = s.time_step_seconds
-    thermal_step!(s.thermal, s.temperature, s.velocity, s.velocity_next, s.fields.radiogenic_heat_field, s.fields.thermal_diffusivity_field, dt)
+    thermal_step!(s.thermal, s.temperature, s.velocity, s.velocity_next, s.fields.radiogenic_heat_field, s.fields.thermal_diffusivity_field, dt;
+        melt_increment_field = s.m.use_magmatism ? s.fields.melt_increment_field : nothing)
     solve_velocity_total!(s)
     for c in 0:substeps-1
         f = (0.5 + c) / substeps

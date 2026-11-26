@@ -1,6 +1,6 @@
 # 2D thermal equation (DMT.cpp, DM1_2d.cpp and thermal_Ke.cpp): bilinear elements, theta scheme
 # and streamline artificial diffusion. Include after particle_swarm.jl.
-# Not covered: magmatism, basal_heat and the T_initial initial conditions.
+# Not covered: basal_heat and the T_initial initial conditions.
 
 struct ElementMatrices
     NT::Matrix{Float64}; NT_x::Matrix{Float64}; NT_z::Matrix{Float64}  # NT, NT_x, NT_z [node, point]
@@ -62,6 +62,7 @@ mutable struct ThermalSolver{D, V, M, K}
     local_thermal_rhs::V                 # local_FT
     local_radiogenic_heat_field::V       # local_geoq_H
     local_thermal_diffusivity_field::V   # local_geoq_kappa
+    local_melt_increment_field::V        # local_dPhi
     local_velocity::V                    # local_V
     iterations::Int
 end
@@ -105,7 +106,7 @@ function ThermalSolver(m::ModelParameters, da_Thermal, da_Veloc, temperature)   
     ksp = LibPETSc.KSPCreate(P, MPI.COMM_WORLD)
     LibPETSc.KSPSetOptionsPrefix(P, ksp, "thermal_")
     s = ThermalSolver(m, ElementMatrices(m), da_Thermal, da_Veloc, LibPETSc.DMCreateMatrix(P, da_Thermal),
-        global_vec(), ksp, bc_values, mask, local_vec(), local_vec(), local_vec(), local_vec(), local_vec(),
+        global_vec(), ksp, bc_values, mask, local_vec(), local_vec(), local_vec(), local_vec(), local_vec(), local_vec(),
         LibPETSc.DMCreateLocalVector(P, da_Veloc), 0)
     global_to_local(da_Thermal, mask, s.local_temperature_bc_mask)
     return s
@@ -177,10 +178,10 @@ function assemble_rhs!(s::ThermalSolver, velocity, dt)              # AssembleF_
     global_to_local(s.da_Veloc, velocity, s.local_velocity)
     LibPETSc.VecZeroEntries(P, s.local_thermal_rhs)
     PETSc.with_local_array!(s.local_thermal_rhs, s.local_velocity, s.local_temperature, s.local_temperature_bc_mask,
-        s.local_thermal_diffusivity_field, s.local_radiogenic_heat_field;
-        write = (true, false, false, false, false, false)) do f, v, t, c, kf, h
+        s.local_thermal_diffusivity_field, s.local_radiogenic_heat_field, s.local_melt_increment_field;
+        write = (true, false, false, false, false, false, false)) do f, v, t, c, kf, h, dp
         V = local_view(s.da_Veloc, v, 2); lv(a) = local_view(s.da_Thermal, a)
-        F, T, C, kappa, H = lv(f), lv(t), lv(c), lv(kf), lv(h)
+        F, T, C, kappa, H, dPhi = lv(f), lv(t), lv(c), lv(kf), lv(h), lv(dp)
         TCe = zeros(4, 4)
         for ek in element_ranges(m, s.da_Thermal)[2], ei in element_ranges(m, s.da_Thermal)[1]
             u, w = mean_velocity(V, ei, ek)
@@ -193,6 +194,11 @@ function assemble_rhs!(s::ThermalSolver, velocity, dt)              # AssembleF_
             if m.use_adiabatic_heating
                 kelvin = sum(T[n...] for n in old) / 4 + 273.0      # T_mean
                 heat -= kelvin * m.thermal_expansion_coefficient * m.gravity_acceleration * w
+            end
+            if m.use_magmatism                                      # latent heat of the melt of the last update
+                kelvin = sum(T[n...] for n in old) / 4 + 273.0
+                # the C++ code uses dS = 400 here, whatever magmatism_dS is (bug 23)
+                heat -= kelvin * m.melting_entropy * (sum(dPhi[n...] for n in old) / 4) / dt
             end
             for a in 1:4
                 C[new[a]...] == 0 && continue
@@ -218,8 +224,9 @@ end
 
 "One step: temperature (Temper) is updated in place. Nodal/element fields as in Mandyoc."
 function thermal_step!(s::ThermalSolver, temperature, velocity, velocity_next,
-    radiogenic_heat_field, thermal_diffusivity_field, time_step_seconds)  # build_thermal + solve_thermal
+    radiogenic_heat_field, thermal_diffusivity_field, time_step_seconds; melt_increment_field = nothing)  # build_thermal + solve_thermal
     global_to_local(s.da_Thermal, temperature, s.local_temperature)
+    melt_increment_field === nothing || global_to_local(s.da_Thermal, melt_increment_field, s.local_melt_increment_field)
     global_to_local(s.da_Thermal, radiogenic_heat_field, s.local_radiogenic_heat_field)
     global_to_local(s.da_Thermal, thermal_diffusivity_field, s.local_thermal_diffusivity_field)
     assemble_lhs!(s, velocity_next, time_step_seconds)
