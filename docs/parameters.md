@@ -37,6 +37,7 @@ Read by mandyocjll (C++ names; the Julia names are in `src/parameters.jl` and in
 | Thermal | `temperature_difference`, `thermal_diffusivity_coefficient`, `thermal_expansion_coefficient`, `gravity_acceleration`, `density_mantle`, `heat_capacity`, `radiogenic_component`, `adiabatic_component`, `shear_heating`, `Xi_shear`, `high_kappa_in_asthenosphere`, `T_initial` (0, 1) |
 | Boundaries | `top_/bot_/left_/right_temperature`, `top_/bot_/left_/right_normal_velocity`, `..._tangential_velocity` |
 | Inputs | `interfaces_from_ascii`, `temperature_from_ascii`, `velocity_from_ascii`, `bcv_extern`, `variable_bcv` |
+| Surface | `sp_surface_tracking`, `sp_surface_processes`, `sp_mode` (`diffusion`, `sedimentation_only`, `sedimentation_rate_limited`, `theunissen_sedimentation`), `sp_d_c`, `surface_particles_per_element`, `sea_level`, `a2l`, `sp_continental_slope`, `sp_sediment_strain`, `variable_base_level` |
 | Outputs | `print_step_files` (particle trajectories), `export_lithology`, `export_thermal_diffusivity` |
 
 `fssa_legacy` is new: `True` reproduces the free surface stabilization term of the C++ code (see
@@ -49,7 +50,6 @@ Read by mandyocjll (C++ names; the Julia names are in `src/parameters.jl` and in
 
 These options stop the run (`options of param.txt not ported yet: ...`):
 
-- surface processes: `sp_surface_processes = True`, `sp_mode` other than `none`, `plot_sediment`;
 - `magmatism`;
 - `nondimensionalization`;
 - `multi_velocity`;
@@ -57,9 +57,9 @@ These options stop the run (`options of param.txt not ported yet: ...`):
 - `basal_heat > 0`;
 - `dimensions = 3`.
 
-Ignored on purpose: `binary_output` and `checkered` (outputs are zarr), `external_heat`, `surface_velocity` and
-`multigrid` (read but not used by the C++ code). The RK4 will be ported when it works in the C++ code.
+Ignored on purpose: `binary_output`, `checkered` and `plot_sediment` (outputs are zarr), `external_heat`, `surface_velocity` and
+`multigrid` and `aggradation_rate` (read but not used by the C++ code). The RK4 will be ported when it works in the C++ code.
 
-`sp_surface_tracking = True` only prints a warning: the surface is not tracked nor written. Also missing:
+Not ported:
 `T_initial` other than 0 and 1 (use `temperature_from_ascii`), `binary_output`, restart, and the per-step
 `step_*` text files (the trajectories are in `particles_trajectories.zarr`).

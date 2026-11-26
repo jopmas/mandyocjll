@@ -302,8 +302,52 @@ O padrão é `visc_const_per_element = 0` (`variable`), mas `Swarm2Mesh_2d` impr
 
 **Sugestão** (não executada): mudar o padrão para `constant` (`visc_const_per_element = 1`) ou recusar `variable` já no `reader.cpp`, dizendo que o valor aceito é `constant`. **Julia:** exige `constant` ao ler o `param.txt` e interrompe com essa mensagem.
 
+# 18. A superfície inicial fica em degraus fora do primeiro processo em x
+
+**Onde:** `src/sp.cpp:158`, função `sp_create_surface_swarm_2d`.
+
+O teste `p < milocal - 1` compara o índice global `p` (de `si` a `si+milocal-1`) com o tamanho local `milocal`. No processo 0 funciona; nos outros processos em x, quase todos os pontos caem no `else` e recebem a profundidade do nó à esquerda, sem interpolar dentro do elemento. A superfície inicial fica em degraus.
+
+**Evidência:** só lido.
+
+**Sugestão** (não executada): usar `if (p < Nx - 1)`. **Julia:** resolvido; a superfície é montada com o índice global.
+
+# 19. Pontos da superfície entre os intervalos z de dois processos são perdidos
+
+**Onde:** `src/sp.cpp:148-165`.
+
+Cada processo guarda os pontos com `z_bottom <= pz <= z_top`, sendo `z_top` o último nó local. Entre `z_top` de um processo e `z_bottom` do processo de cima há um elemento inteiro (`dz`) que nenhum processo cobre, e os pontos com a interface nessa faixa não são criados. Com mais de um processo em z, a superfície pode ter buracos, que a interpolação depois preenche com uma reta.
+
+**Evidência:** só lido.
+
+**Sugestão** (não executada): usar `pz < z_bottom + mjlocal * dz_const` (ou `pz <= z_top` só no último processo em z). **Julia:** resolvido; a superfície é um vetor replicado em todos os processos e nenhum ponto se perde.
+
+# 20. Com mais de um processo em z, a reamostragem duplica pontos
+
+**Onde:** `src/sp.cpp:413`, função `sp_surface_swarm_interpolation`.
+
+Cada processo com pontos locais (`nlocal > 0`) reamostra a sua faixa `si..si+milocal` em x. Se dois processos da mesma coluna têm pontos (a superfície atravessa a divisa em z), os dois geram os mesmos `px`, e a superfície remontada tem pontos repetidos e um tamanho que muda com a partição.
+
+**Evidência:** só lido.
+
+**Sugestão** (não executada): reamostrar só no processo 0 a partir de `seq_array` e redistribuir, ou escolher um único dono por coluna. **Julia:** resolvido; a reamostragem é a mesma em todos os processos.
+
+# 21. Partículas não são atualizadas nos processos sem pontos da superfície
+
+**Onde:** `src/sp.cpp:1110`, função `sp_update_surface_swarm_particles_properties`.
+
+O laço é `for (p = 0; seq_surface_size && p < nlocal; p++)`, com `seq_surface_size` igual ao tamanho **local** do swarm da superfície. Um processo sem pontos da superfície (por exemplo, abaixo dela em z, mas com partículas de ar ou rocha perto da divisa depois da sedimentação ou erosão) não troca ar por sedimento nem rocha por ar. O índice `i = px/sp_dx` também lê `seq_array[2*i+3]` sem conferir o fim do vetor.
+
+**Evidência:** só lido.
+
+**Sugestão** (não executada): usar o tamanho do vetor sequencial completo e limitar `i` a `global_surface_size - 2`. **Julia:** resolvido; todos os processos atualizam as suas partículas com a superfície completa. Com 1 e 4 processos, os resultados de Julia são iguais (superfície 4e-3 m, densidade 4e-6).
+
 # Observações a confirmar
 
+- **Nível de base médio:** `sp_evaluate_adjusted_mean_elevation_with_sea_level` (`src/sp.cpp:324`) faz a média só do primeiro quarto dos pontos (`seq_surface_size / 2 / 4`), isto é, da borda esquerda do modelo. Vale confirmar se é intencional. O Julia repete.
+- **Altura da superfície nas partículas:** `sp_update_surface_swarm_particles_properties` usa `rx = 0.5` fixo, a média dos dois pontos vizinhos, e não a posição da partícula. O Julia repete.
+- **`aggradation_rate`:** é lido, mas não é usado.
+- **Ponto exatamente em `px` na reamostragem:** é ignorado pelas desigualdades estritas (`cx_aux < px`, `cx_aux > px`). O Julia usa esse ponto; a diferença só aparece nesse caso.
 - **Jacobiano do elemento térmico:** `montaKeThermal_*` omite o fator 1/4. Como ele aparece em todos os termos, a solução não muda.
 - **Reologia 7:** a viscosidade é `visco_ref*A*exp(-(QE+VE*P)/(R*T))`, que cresce com a temperatura se `QE` é positivo. Vale confirmar se é intencional. O Julia repete a fórmula.
 - **Reologia 1:** retorna antes dos limites de viscosidade e da plasticidade. Vale confirmar. O Julia repete.
@@ -362,3 +406,17 @@ Com a adição e remoção de partículas nos dois códigos (1 processo, mesma s
 | Rift, dt de 50 mil anos | 30 | 8,0e-7 | 1,4e-6 | 6,4e-9 |
 
 No rift, 172 partículas entraram e 103 saíram no último passo.
+
+# Processos superficiais: comparação Julia × C++
+
+`continental_rift_with_surface_processes` do tapioca-svg, 161 × 31 nós, 40 pontos da superfície por elemento, 3 passos de 10 mil anos, 1 processo, `fssa_legacy = true`. A diferença da superfície está no limite da precisão dos `surface_*.txt` do C++ (6 algarismos, 0,1 m em 40 km):
+
+| `sp_mode` | Variação da superfície (C++) | Diferença máxima da superfície | Densidade | Deformação |
+|:------------------------------|:-:|:-:|:-:|:-:|
+| `diffusion` | 0,2 m | 0,05 m | 3,5e-7 | 1,1e-6 |
+| `sedimentation_only` | 1.510 m | 0,03 m | 3,5e-7 | 4,7e-7 |
+| `sedimentation_rate_limited` | 518 m | 0,05 m | 3,5e-7 | 1,1e-6 |
+| `theunissen_sedimentation` (nível de base variável) | 29 m | 0,12 m | 3,5e-7 | 1,1e-6 |
+
+Densidade e deformação: erro relativo (norma L2) no último passo.
+

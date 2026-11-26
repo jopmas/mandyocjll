@@ -16,13 +16,13 @@ python ../plot_example.py .            # plot_<step>.png of the last output (or:
 | Example | Runs in mandyocjll | Options |
 |---|---|---|
 | `vanKeken1997_case1a` | yes | |
-| `Crameri2012_case2` | yes, without the surface outputs (`sp_surface_tracking`) | |
+| `Crameri2012_case2` | yes | |
 | `continental_rift` | yes | `-seed 0,2 -strain_seed 0.0,1.0` |
 | `slab_detachment` | yes | `-seed 0 -strain_seed 0.0` |
 | `two_layers_with_variable_conductivity` | yes | |
 | `punch` | yes (slow: up to 700 nonlinear iterations) | |
 | `variable_velocity_field` | yes | `-seed 0,2 -strain_seed 0.0,1.0` |
-| `continental_rift_with_surface_processes` | no: surface processes | `-seed 0,2 -strain_seed 0.0,1.0` |
+| `continental_rift_with_surface_processes` | yes | `-seed 0,2 -strain_seed 0.0,1.0` |
 | `continental_rift_non_dimensional/model1` | no: nondimensionalization | `-seed 0,2 -strain_seed 0.0,1.0` |
 | `continental_rift_non_dimensional/model2`, `model3` | no: nondimensionalization, 3D | `-seed 0,2 -strain_seed 0.0,1.0` |
 

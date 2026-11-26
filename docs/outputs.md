@@ -15,6 +15,7 @@ of the NetCDF files that tapIOca writes from the text outputs of Mandyoc (`meshe
 | `heat.zarr` | `heat` | W/kg | always |
 | `thermal_diffusivity.zarr` | `thermal_diffusivity` | m2/s | `export_thermal_diffusivity = True` |
 | `lithology.zarr` | `lithology` (layer ID, `int8`) on a mesh 5 times finer | | `export_lithology = True` |
+| `surface.zarr` | `surface` (height of the surface at `x`, measured from the top of the model, negative below it) | m | `sp_surface_tracking = True` or `sp_surface_processes = True` |
 | `particles_trajectories.zarr` | `x`, `z`, `lithology`, `strain` of the first particle of each element, by `id` | m | `print_step_files = True` |
 
 The mesh stores have the coordinates `time` (Myr), `step`, `x` and `z` (m, `z` from `-lz` to 0) and the dimensions
@@ -50,4 +51,4 @@ The run scripts of tapIOca with `code = mandyocjll` call it before the snapshots
 ## Other files
 
 `param.txt` is copied to the output folder (tapIOca reads it there). Nothing else is written: no `time_*.txt`,
-`bc_velocity_*.txt`, `step_*` nor `surface` files.
+`bc_velocity_*.txt` nor `step_*` files.

@@ -23,6 +23,10 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
 - **Rheology**: the 13 rheologies of Mandyoc, Drucker-Prager plasticity with strain softening, strain healing,
   viscosity limits, sticky air (`sticky_blanket_air`), the viscosity ramp of Gerya (`initial_dynamic_range`) at the
   start and after each change of `scale_bcv.txt`, and the nonlinear (Picard) iterations up to 700 or `Xi_min`.
+- **Surface**: the surface of `sp_surface_tracking`, advected with the particles and resampled every step, and the
+  surface processes of `sp_mode` (diffusion and the sedimentation modes, with `sediment_layers.txt`,
+  `sedimentation_rate.txt` and `base_level.txt`), which turn air particles below the surface into sediment and rock
+  above it into air (`sp.cpp`).
 - **Time step**: 10% of the time to cross an element at the largest velocity, limited by `dt_max`.
 
 ## Differences from the C++ code
@@ -40,6 +44,7 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
 | `-seed` with a layer that does not exist | writes out of the array (bug 16) | error |
 | Uzawa or nonlinear loop without convergence | silent (bug 9) | warning |
 | Threads | as many OpenMP threads per rank as the BLAS opens | one per rank when `-n` > 1 |
+| Surface | a swarm split among the ranks: steps in the initial surface, lost and duplicated points and particles not updated with more than one rank (bugs 18-21) | an array replicated on every rank: independent of the number of ranks |
 | Outputs | text files per step, organized by tapIOca | zarr stores |
 
 With these differences, the results of the two codes are not bit-identical. See [validation.md](validation.md) for
