@@ -29,13 +29,13 @@ Read by mandyocjll (C++ names; the Julia names are in `src/parameters.jl` and in
 
 | Group | Keys |
 |---|---|
-| Mesh | `nx`, `nz`, `lx`, `lz`, `periodic_boundary` |
+| Mesh | `dimensions` (2, 3), `nx`, `ny` (3D), `nz`, `lx`, `ly` (3D), `lz`, `periodic_boundary` (2D) |
 | Particles | `particles_per_element`, `particles_perturb_factor`, `random_initial_strain` |
 | Time | `step_max`, `time_max`, `dt_max`, `sub_division_time_step`, `step_print`, `initial_print_step`, `initial_print_max_time` |
 | Stokes solver | `solver` (direct: MUMPS; iterative), `rtol`, `denok`, `Xi_min`, `non_linear_method`, `initial_dynamic_range`, `free_surface_stab`, `theta_FSSA`, `fssa_legacy` |
 | Rheology | `rheology_model` (0-10, 19, 70), `viscosity_reference`, `viscosity_max`, `viscosity_min`, `viscosity_mean_method`, `viscosity_dependence`, `pressure_const`, `plasticity`, `weakening_min`, `weakening_max`, `geoq`, `geoq_fac`, `viscosity_per_element` (must be `constant`), `sticky_blanket_air`, `air_threshold_density`, `strain_healing`, `A_healing`, `k_healing`, `T0_healing` |
 | Thermal | `temperature_difference`, `thermal_diffusivity_coefficient`, `thermal_expansion_coefficient`, `gravity_acceleration`, `density_mantle`, `heat_capacity`, `radiogenic_component`, `adiabatic_component`, `shear_heating`, `Xi_shear`, `basal_heat`, `high_kappa_in_asthenosphere`, `T_initial` (0, 1) |
-| Boundaries | `top_/bot_/left_/right_temperature`, `top_/bot_/left_/right_normal_velocity`, `..._tangential_velocity` |
+| Boundaries | `top_/bot_/left_/right_temperature`, `top_/bot_/left_/right_normal_velocity`, `..._tangential_velocity`; in 3D also `front_/back_temperature` and `front_/back_normal_velocity`, `..._tangential_velocity` (as in the C++ code, `front` is y = 0 for the temperature and y = Ly for the velocity, bug 30) |
 | Inputs | `interfaces_from_ascii`, `temperature_from_ascii`, `velocity_from_ascii`, `bcv_extern`, `variable_bcv`, `multi_velocity` (`multi_veloc.txt` and `input_velocity_<n>.txt`) |
 | Surface | `sp_surface_tracking`, `sp_surface_processes`, `sp_mode` (`diffusion`, `sedimentation_only`, `sedimentation_rate_limited`, `theunissen_sedimentation`), `sp_d_c`, `surface_particles_per_element`, `sea_level`, `a2l`, `sp_continental_slope`, `sp_sediment_strain`, `variable_base_level` |
 | Magmatism | `magmatism`, `magmatism_extraction` (needs the surface tracking), `magmatic_layer`, `magmatism_Ts0`, `magmatism_dTdP`, `magmatism_dTdX`, `magmatism_dS` |
@@ -57,7 +57,9 @@ the scales are written to `dimensional_convertion.txt`, and `denok`, given in th
 These options stop the run (`options of param.txt not ported yet: ...`):
 
 - `RK4 = Runge-Kutta` (the RK4 of the C++ code is marked as not working; see the bugs document);
-- `dimensions = 3`.
+- in 3D (`dimensions = 3`), as in the C++ code: `magmatism`, the surface tracking and processes, and
+  `periodic_boundary`. `temperature_from_ascii = True` is required, and `export_lithology` and `print_step_files`
+  are ignored.
 
 Ignored on purpose: `binary_output`, `checkered` and `plot_sediment` (outputs are zarr), `external_heat`, `surface_velocity` and
 `multigrid` and `aggradation_rate` (read but not used by the C++ code). The RK4 will be ported when it works in the C++ code.

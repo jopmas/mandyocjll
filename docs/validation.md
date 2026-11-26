@@ -17,6 +17,8 @@ julia --project=. test/mpirun.jl 4 test_thermal.jl
 julia --project=. test/mpirun.jl 4 test_stokes.jl
 julia --project=. test/mpirun.jl 4 test_open_boundary.jl shim
 julia --project=. test/mpirun.jl 4 test_particle_control.jl native
+julia --project=. test/mpirun.jl 4 test_thermal3d.jl
+julia --project=. test/mpirun.jl 4 test_stokes3d.jl
 julia --project=. test/test_rheology.jl <mandyoc>/src <petsc>/include
 julia --project=. test/mpirun.jl 1 van_keken.jl 81 6 300
 ```
@@ -64,6 +66,7 @@ Short runs of the examples in `examples/`:
 | `rifting_sedimentation` from its SVG (121 × 41) with `magmatism`, solidus lowered to melt from the start | C++, 5 steps, 1 rank, with and without extraction (Julia also with 4 ranks) | Phi 1.2e-5, depletion 1e-6, temperature 2e-6, same extracted volume and position; see the bugs document |
 | `continental_rift_with_surface_processes` (161 × 31) with `multi_velocity` (velocity reversed and doubled at 15 kyr) | C++, 4 steps, 1 rank | velocity 8.8e-6, temperature 2.0e-6, strain 2.7e-6 |
 | the same with `basal_heat = 0.03` W/m2 | C++, 4 steps, 1 rank | temperature 2.0e-6 (bottom row 72.7 K above the next one in both), velocity 3.6e-6 |
+| `continental_rift_non_dimensional/model2` in 3D (41 × 5 × 11, SI units) | C++, 3 steps, 1 and 2 ranks (`fssa_legacy`) | velocity 1.2e-6, temperature 2.2e-6, strain 1.2e-6; 30 steps with particle addition and removal: velocity 1e-3, strain 2e-2 (different random choices); Julia identical with 1 and 4 ranks |
 | `continental_rift_non_dimensional/model1` (161 × 31), `nondimensionalization = True` | C++ in the nondimensional mode, 4 steps, 1 rank, fields converted with the scales (`fssa_legacy`, large `dt_max`, no random strain) | velocity 6.9e-5, temperature 2.2e-5, pressure 7.7e-7; without the option, the Julia solution is identical |
 
 The punch does not converge in either code: the nonlinear iterations stop at 700 with `Xi` around 1e-8 (C++: 8e-9),

@@ -26,7 +26,7 @@ ln -s ~/opt/mandyocjll/bin/mandyocjll ~/.local/bin/
 | `-seed L1,L2,...` | layers (0 = bottom layer) with initial strain |
 | `-strain_seed S1,S2,...` | initial strain of these layers (default: 0.5 for each) |
 | `-h_air H` | thickness of the air layer [m], needed by the depth dependent rheology (`viscosity_dependence = depth`) |
-| `-Px N`, `-Pz N` | number of ranks in x and z (default: chosen by PETSc) |
+| `-Px N`, `-Py N`, `-Pz N` | number of ranks in x, y (3D) and z (default: chosen by PETSc) |
 | `-h`, `--help` | help |
 
 Any other option goes to PETSc (e.g. `-log_view`, `-veloc_ksp_view`). `-strain_seed_constant`, accepted by the C++

@@ -1,7 +1,7 @@
 # mandyocjll documentation
 
 mandyocjll is a port of [Mandyoc](https://github.com/ggciag/mandyoc) (C++/PETSc) to Julia. It reads the same input
-files (`param.txt`, `interfaces.txt`, `input_*_0.txt`), runs the same 2D thermomechanical model (particles in cell,
+files (`param.txt`, `interfaces.txt`, `input_*_0.txt`), runs the same 2D and 3D thermomechanical model (particles in cell,
 Q1-P0 Stokes with Uzawa, nonlinear viscoplastic rheology, heat equation) and writes the outputs in zarr, with the
 names and units of the NetCDF files of [tapIOca](https://github.com/jopmas/tapioca).
 

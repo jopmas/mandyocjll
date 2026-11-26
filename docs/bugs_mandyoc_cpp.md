@@ -439,6 +439,34 @@ Os cenários do tapioca usam `denok = 1e-14` e não são afetados.
 
 **Sugestão** (não executada): usar um critério relativo, por exemplo `denok` dividido pelo resíduo inicial ou por $\lVert G\rVert\,\lVert v\rVert$, ou ao menos mudar o padrão para 1e-14. **Julia:** repete o C++, converte `denok` no modo adimensional e avisa quando `denok` > 1e-10.
 
+# 29. O FSSA não tem efeito em 3D
+
+**Onde:** `src/DM1_v.cpp:748`, `778` e `794`, função `AssembleA_Veloc_3d`.
+
+O termo do FSSA é somado em `Ke_veloc_final` (linha 778), mas a linha 794 faz `Ke_veloc_final[i]=Ke_veloc[i]*volume` para todos os termos e o apaga antes de a matriz ser montada. Em 3D, `free_surface_stab` não muda nada. Além disso, `theta_FSSA = 0.5` é uma variável local (linha 748) que esconde o parâmetro, e o termo tem o mesmo `g` a mais do item 7.
+
+**Evidência:** só lido; o modelo 3D do Julia sem o termo (`fssa_legacy = true`) coincide com o C++ (item "3D: comparação" abaixo).
+
+**Sugestão** (não executada): mover a soma do termo para depois da multiplicação pelo volume, usar o parâmetro `theta_FSSA` e a fórmula do item 7 (`theta*dt*rho_mean_bottom*dx*dy/4`, com o fator das matrizes). **Julia:** o FSSA 3D usa a forma consistente ($\theta\,dt\,\Delta(dRho)\,dx\,dy/8$ por nó); com `fssa_legacy = true` não há termo, como no C++.
+
+# 30. Em 3D, `front` e `back` são faces opostas para a temperatura e para a velocidade
+
+**Onde:** `src/DMT.cpp:311-313` e `src/DMv.cpp:429-435`.
+
+Na temperatura, `front_temperature` vale para y = 0 e `back_temperature` para y = Ly. Na velocidade, `back_*_velocity` vale para y = 0 e `front_*_velocity` para y = Ly. Um `param.txt` que fixa "a frente" aplica as condições em faces diferentes.
+
+**Sugestão** (não executada): usar a mesma convenção nos dois e documentá-la. **Julia:** repete o C++ (para os mesmos `param.txt`) e documenta.
+
+# 31. A pressão do topo é somada em precisão simples
+
+**Onde:** `src/calc_drho.cpp:239`, `257` (2D) e `436`, `455` (3D), funções `shift_pressure_2d/3d`.
+
+A média da pressão no topo, que é subtraída de toda a pressão nos nós, é acumulada em `float` e somada entre processos com `MPI_FLOAT`. A pressão fica com erro relativo da ordem de 1e-7, e o resultado muda com o número de processos.
+
+**Evidência:** em todas as comparações deste documento, a pressão do Julia (que soma em `double`) difere da do C++ em 5e-7 a 6e-7, também quando velocidade e temperatura coincidem em 1e-6.
+
+**Sugestão** (não executada): `PetscReal` e `MPIU_REAL`. **Julia:** soma em precisão dupla.
+
 # Observações a confirmar
 
 - **Nível de base médio:** `sp_evaluate_adjusted_mean_elevation_with_sea_level` (`src/sp.cpp:324`) faz a média só do primeiro quarto dos pontos (`seq_surface_size / 2 / 4`), isto é, da borda esquerda do modelo. Vale confirmar se é intencional. O Julia repete.
@@ -450,6 +478,8 @@ Os cenários do tapioca usam `denok = 1e-14` e não são afetados.
 - **Superfície acima do topo do modelo:** os pontos da superfície que saem da malha (por exemplo, numa extrusão grande) são descartados pela migração do swarm, e a reamostragem preenche o buraco. O Julia mantém esses pontos e avisa.
 - **`basal_heat`:** a condutividade é a do manto (`kappa*RHOM*c`), não a da camada da base, e a temperatura fixa da base (`bot_temperature`) é substituída depois de cada solução. O Julia repete.
 - **`multi_velocity`:** o novo `input_velocity_<n>.txt` substitui também os valores de contorno, então um fator de `scale_bcv.txt` aplicado antes se perde. Sem `velocity_from_ascii`, a velocidade atual vira o contorno. O Julia repete.
+- **3D sem difusividade por camada:** em 3D, a térmica usa a difusividade global (`kappa`, `src/thermal_Ke.cpp:321` e `483`), e `Swarm2Mesh_3d` não calcula `geoq_kappa` (marcado no código como pendente), então a linha `k` de `interfaces.txt` e `high_kappa_in_asthenosphere` não valem. Também faltam em 3D o aquecimento por cisalhamento (marcado como pendente), `basal_heat`, a superfície, os processos superficiais, a extração de magma e a fronteira periódica. O Julia 3D tem a difusividade por camada, `high_kappa_in_asthenosphere`, o aquecimento por cisalhamento e `basal_heat`, como no 2D; superfície, magmatismo e fronteira periódica interrompem a rodada em 3D.
+- **`sticky_blanket_air` em 3D:** o laço (`src/DMSwarm2mesh.cpp:1114`) vai até `sx+mmx-2` em cada direção, como no item 14, e escreve a viscosidade mínima também nos nós do último plano em x e y, que não guardam elemento (sem efeito na solução). O Julia usa os elementos do processo.
 - **Ponto exatamente em `px` na reamostragem:** é ignorado pelas desigualdades estritas (`cx_aux < px`, `cx_aux > px`). O Julia usa esse ponto; a diferença só aparece nesse caso.
 - **Jacobiano do elemento térmico:** `montaKeThermal_*` omite o fator 1/4. Como ele aparece em todos os termos, a solução não muda.
 - **Reologia 7:** a viscosidade é `visco_ref*A*exp(-(QE+VE*P)/(R*T))`, que cresce com a temperatura se `QE` é positivo. Vale confirmar se é intencional. O Julia repete a fórmula.
@@ -533,4 +563,16 @@ Densidade e deformação: erro relativo (norma L2) no último passo.
 | `magmatism_Ts0 = 970`, com extração (2,26e8 m² em x = 0) | 1,2e-5 | 7,7e-7 | 2,1e-6 | 3,5 m |
 
 O volume extraído e a posição batem com o C++ (2,2632e8 m²; com `Ts0 = 930`, 2,6976e9 m² em x = 599,17 km). O `dPhi` difere em cerca de 3e-4, porque é a diferença pequena `T - Ts` em precisão simples. A velocidade e a deformação diferem em 1e-3 também sem magmatismo, porque uma fileira de partículas cai exatamente sobre a interface da crosta em -62,5 km. Com 1 e 4 processos, os resultados de Julia são iguais (Phi 7e-7, superfície 4e-3 m).
+
+# 3D: comparação Julia × C++
+
+`continental_rift_non_dimensional/model2` em 41 × 5 × 11 nós, 15 partículas por elemento, unidades SI, `denok = 1e-14`, `solver = direct`, sem perturbação das partículas e sem deformação aleatória, `fssa_legacy = true`. Erro relativo (norma L2):
+
+| Rodada | Passo | Velocidade | Temperatura | Pressão | Deformação |
+|:-----------------------------------------|:-:|:-:|:-:|:-:|:-:|
+| 3 passos de 10 mil anos, 1 processo | 3 | 1,2e-6 | 2,2e-6 | 5,7e-7 | 1,2e-6 |
+| o mesmo, C++ com 2 processos | 3 | 3,8e-6 | 2,4e-6 | 5,7e-7 | 1,2e-6 |
+| 30 passos de 85 mil anos (adição e remoção de partículas) | 30 | 1,0e-3 | 2,2e-6 | | 2,3e-2 |
+
+A viscosidade difere em 5e-4 só nos nós do último plano em x e y (observação sobre `sticky_blanket_air`). Na rodada longa, as diferenças aparecem com a adição e remoção de partículas, cujos sorteios são diferentes nos dois códigos (o C++ usa uma sequência por processo). O Julia com 1 e 4 processos dá o mesmo resultado (temperatura 7e-6, pressão 7e-8, velocidade idêntica fora do ruído de `vy`).
 

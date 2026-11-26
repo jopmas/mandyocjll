@@ -24,7 +24,7 @@ python ../plot_example.py .            # plot_<step>.png of the last output (or:
 | `variable_velocity_field` | yes | `-seed 0,2 -strain_seed 0.0,1.0` |
 | `continental_rift_with_surface_processes` | yes | `-seed 0,2 -strain_seed 0.0,1.0` |
 | `continental_rift_non_dimensional/model1` | yes (solved in SI units; denok of the example is converted) | `-seed 0,2 -strain_seed 0.0,1.0` |
-| `continental_rift_non_dimensional/model2`, `model3` | no: 3D | `-seed 0,2 -strain_seed 0.0,1.0` |
+| `continental_rift_non_dimensional/model2`, `model3` | yes (3D; slow with the original mesh) | `-seed 0,2 -strain_seed 0.0,1.0` |
 
 The examples that do not run yet are kept as targets of the port: mandyocjll stops and names the missing options.
 

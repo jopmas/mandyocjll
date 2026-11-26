@@ -36,6 +36,10 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
   also as the boundary values, at each time of `multi_veloc.txt`), both followed by the viscosity ramp if
   `initial_dynamic_range`; `basal_heat`, the heat flow at the base, imposed after each thermal solve on the bottom
   row with the conductivity of the mantle.
+- **3D**: the same model with trilinear hexahedra (27 Gauss points), Q1-P0 Stokes with the same Uzawa iterations,
+  particles located with the same rule (the rank of the lower left front node owns the element) and the Euler
+  advection. As in 2D, the elements have the diffusivity of their layer and the shear heating, which the 3D C++
+  code does not have; the 3D FSSA has the consistent weight (it has no effect in the C++ code, bug 29).
 - **Time step**: 10% of the time to cross an element at the largest velocity, limited by `dt_max`.
 
 ## Differences from the C++ code
@@ -57,6 +61,7 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
 | Melt extraction | at x = 0 if no particle melted in the last update (bug 25); a tie goes to the highest rank | as the C++ code, but a tie (depths within 1 cm) goes to the smallest x: independent of the number of ranks |
 | Latent heat | `dS = 400` whatever `magmatism_dS` is (bug 23) | `magmatism_dS` |
 | `nondimensionalization` | equations in units of the depth, maximum viscosity, gravity, mantle density and diffusivity; the time step, `time_max` and the times of the input files mix these units with years (bug 27) | equations in SI units (same solution), outputs in SI, scales in `dimensional_convertion.txt` |
+| 3D | no diffusivity per layer, shear heating or basal_heat; FSSA without effect (bug 29); particle seeds per rank | as in 2D: diffusivity per layer, shear heating, basal_heat, consistent FSSA; particles independent of the number of ranks |
 | Outputs | text files per step, organized by tapIOca | zarr stores |
 
 With these differences, the results of the two codes are not bit-identical. See [validation.md](validation.md) for

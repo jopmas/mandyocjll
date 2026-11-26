@@ -344,3 +344,13 @@ Velocidade,mv_time,velocity_files,renomear,0,multi_velocity,,Tempos de multi_vel
 Velocidade,i_veloc,velocity_file,renomear,0,,,Número do próximo input_velocity_<n>.txt
 Adimensionalização,denok_min (modo adimensional),uzawa_residual_tolerance,manter,0,denok,,Convertido para SI com (veloc0*h0)^2
 Adimensionalização,gravity no FSSA (modo adimensional),fssa_legacy_gravity_unit,novo,0,,,1/g0 com nondimensionalization e fssa_legacy
+Malha,Ny,Ny,manter,0,ny,,3D
+Malha,Ly,Ly,manter,0,ly,,3D
+Malha,Py,Py,manter,0,,,Processos em y (-Py)
+Malha,ny_ppe,particles_per_element_y,renomear,0,,,3D
+Contorno,bcT_front,temperature_bc_front,renomear,0,front_temperature,,y = 0 (3D)
+Contorno,bcT_back,temperature_bc_back,renomear,0,back_temperature,,y = Ly (3D)
+Contorno,bcv_front_normal,velocity_bc_front_normal,renomear,0,front_normal_velocity,,y = Ly (3D)
+Contorno,bcv_front_slip,velocity_bc_front_tangential,renomear,0,front_tangential_velocity,,y = Ly (3D)
+Contorno,bcv_back_normal,velocity_bc_back_normal,renomear,0,back_normal_velocity,,y = 0 (3D)
+Contorno,bcv_back_slip,velocity_bc_back_tangential,renomear,0,back_tangential_velocity,,y = 0 (3D)

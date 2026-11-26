@@ -1,11 +1,12 @@
 # mandyocjll: teste de viabilidade do Mandyoc em Julia
 
-Partículas (DMDA + DMSwarm), equação térmica, Stokes não linear e reologia em 2D (só dimensional).
+Partículas (DMDA + DMSwarm), equação térmica, Stokes não linear e reologia em 2D e 3D.
 
 - `src/parameters.jl`, `src/particle_swarm.jl`: nomes do `rename_table.csv` (mandyoc_jpm),
   com o nome antigo no comentário. A coluna `decisao` da tabela ainda está vazia.
-- `src/thermal.jl`: térmica 2D (sem magmatismo nem basal_heat).
-- `src/stokes.jl`: Stokes 2D Q1-P0 com Uzawa, FSSA e partículas -> malha.
+- `src/thermal.jl`, `src/thermal3d.jl`: térmica 2D e 3D.
+- `src/stokes.jl`, `src/stokes3d.jl`: Stokes 2D e 3D Q1-P0 com Uzawa e FSSA.
+- `src/rheology3d.jl`: partículas, partículas -> malha, pressão e modelo acoplado em 3D.
 - `src/rheology.jl`: 13 reologias, plasticidade, deformação, laço não linear, rampa de Gerya, ar e laço de tempo.
 - `src/reader.jl`: lê `param.txt` e `interfaces.txt` do Mandyoc.
 - `src/particle_control.jl`: adição e remoção de partículas.
@@ -71,8 +72,7 @@ gera `run_linux.sh`, `run_mac.sh` ou `run_hypatia.sh` que chamam o mandyocjll.
 
 ## Ainda não portado
 
-Processos superficiais, magmatismo, 3D, adimensionalização, RK4, restart, `T_initial` diferente de 0 e 1,
-`multi_velocity` e `basal_heat`.
+RK4, restart, `T_initial` diferente de 0 e 1, e em 3D (como no C++) magmatismo, superfície e fronteira periódica.
 
 ## Desempenho em paralelo (Mac)
 
