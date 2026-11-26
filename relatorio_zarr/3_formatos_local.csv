@@ -1,0 +1,8 @@
+formato,tempo dos campos (s),ganho vs ASCII (×),tamanho da saída (MB),redução vs ASCII (×)
+"ASCII (PETSc ASCII, padrão)",1.8376,1.0,20.73,1.0
+PETSc binário (binary_output),0.0066,276.9,16.38,1.3
+HDF5 sem compressão,0.0083,222.1,12.59,1.6
+"Zarr nativo, sem compressão",0.0165,111.6,12.61,1.6
+"Zarr nativo, zlib 1 (adotado)",0.0628,29.3,7.35,2.8
+"Zarr nativo, zlib 5",0.0828,22.2,7.36,2.8
+"Zarr via z5 (lib externa), zlib 1",0.0645,28.5,7.35,2.8

@@ -1,0 +1,222 @@
+{
+ "zn0": {
+  "size": 12609042,
+  "times": {
+   "temperature": 0.002259,
+   "viscosity": 0.00184,
+   "density": 0.001801,
+   "heat": 0.001814,
+   "strain": 0.001799,
+   "strain_rate": 0.001721,
+   "velocity": 0.003417,
+   "pressure": 0.001817,
+   "particles": 0.01275
+  },
+  "files": [
+   "mandyoc_1.zarr"
+  ]
+ },
+ "zn1": {
+  "size": 7352212,
+  "times": {
+   "temperature": 0.006713,
+   "viscosity": 0.010255,
+   "density": 0.002104,
+   "heat": 0.002165,
+   "strain": 0.002025,
+   "strain_rate": 0.010393,
+   "velocity": 0.021007,
+   "pressure": 0.00813,
+   "particles": 0.035049
+  },
+  "files": [
+   "mandyoc_1.zarr"
+  ]
+ },
+ "zn5": {
+  "size": 7355404,
+  "times": {
+   "temperature": 0.010995,
+   "viscosity": 0.013368,
+   "density": 0.002742,
+   "heat": 0.002789,
+   "strain": 0.002601,
+   "strain_rate": 0.013172,
+   "velocity": 0.025266,
+   "pressure": 0.011872,
+   "particles": 0.050065
+  },
+  "files": [
+   "mandyoc_1.zarr"
+  ]
+ },
+ "zz1": {
+  "size": 7352763,
+  "times": {
+   "temperature": 0.006831,
+   "viscosity": 0.010804,
+   "density": 0.002328,
+   "heat": 0.002356,
+   "strain": 0.002182,
+   "strain_rate": 0.010589,
+   "velocity": 0.020984,
+   "pressure": 0.008452,
+   "particles": 0.036061
+  },
+  "files": [
+   "mandyoc_1.zarr"
+  ]
+ },
+ "h5": {
+  "size": 12588296,
+  "times": {
+   "temperature": 0.00159,
+   "viscosity": 0.000961,
+   "density": 0.001031,
+   "heat": 0.001002,
+   "strain": 0.000908,
+   "strain_rate": 0.000895,
+   "velocity": 0.000917,
+   "pressure": 0.000969,
+   "particles": 0.006485
+  },
+  "files": [
+   "mandyoc_1.h5"
+  ]
+ },
+ "bin": {
+  "size": 16378952,
+  "times": {
+   "temperature": 0.000679,
+   "viscosity": 0.000439,
+   "density": 0.000492,
+   "heat": 0.003013,
+   "strain": 0.000455,
+   "strain_rate": 0.000495,
+   "velocity": 0.000644,
+   "pressure": 0.000419
+  },
+  "files": [
+   "pressure_1.bin",
+   "strain_rate_1.bin",
+   "step_0_1.bin",
+   "heat_1.bin",
+   "viscosity_1.bin",
+   "step_1_1.bin",
+   "velocity_1.bin",
+   "strain_1.bin",
+   "density_1.bin",
+   "temperature_1.bin",
+   "step_1_1.bin",
+   "step_1_0.bin"
+  ]
+ },
+ "ascii": {
+  "size": 20727276,
+  "times": {
+   "temperature": 0.204715,
+   "viscosity": 0.203865,
+   "density": 0.199123,
+   "heat": 0.206009,
+   "strain": 0.197911,
+   "strain_rate": 0.205222,
+   "velocity": 0.411465,
+   "pressure": 0.209314
+  },
+  "files": [
+   "pressure_1.txt",
+   "strain_rate_1.txt",
+   "step_0_1.txt",
+   "heat_1.txt",
+   "step_1_1.txt",
+   "viscosity_1.txt",
+   "velocity_1.txt",
+   "strain_1.txt",
+   "density_1.txt",
+   "temperature_1.txt",
+   "step_1_1.txt",
+   "step_1_0.txt"
+  ]
+ },
+ "pervar": {
+  "density": [
+   1357039,
+   10241
+  ],
+  "viscosity": [
+   2670729,
+   1566512
+  ],
+  "pressure": [
+   2761232,
+   507622
+  ],
+  "strain": [
+   726052,
+   14091
+  ],
+  "strain_rate": [
+   2876166,
+   1819943
+  ],
+  "temperature": [
+   1737434,
+   108448
+  ],
+  "heat": [
+   1246501,
+   23269
+  ],
+  "velocity": [
+   5791093,
+   3649497
+  ],
+  "surface": [
+   83252,
+   9059
+  ],
+  "particles": [
+   11039400,
+   1038726
+  ],
+  "lithology": [
+   91375400,
+   41174
+  ]
+ },
+ "t_ref_ascii": {
+  "temperature": 0.217427,
+  "viscosity": 0.220479,
+  "density": 0.214801,
+  "heat": 0.214676,
+  "strain": 0.206769,
+  "strain_rate": 0.216479,
+  "velocity": 0.438882,
+  "pressure": 0.217523
+ },
+ "t_var_zarr2": {
+  "temperature": 0.003084,
+  "viscosity": 0.02401,
+  "density": 0.002814,
+  "heat": 0.008427,
+  "strain": 0.003104,
+  "strain_rate": 0.024317,
+  "velocity": 0.006217,
+  "pressure": 0.049694,
+  "particles": 0.003016,
+  "lithology": 0.033257
+ },
+ "t_var_zarr2_timeline": {
+  "temperature": 0.003084,
+  "viscosity": 0.01955389976501465,
+  "density": 0.0054395198822021484,
+  "heat": 0.006025075912475586,
+  "strain": 0.005914449691772461,
+  "strain_rate": 0.020945072174072266,
+  "velocity": 0.04381513595581055,
+  "pressure": 0.011622905731201172,
+  "particles": 0.023787975311279297,
+  "lithology": 0.010010480880737305,
+  "surface": 0.0028018951416015625
+ }
+}

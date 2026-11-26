@@ -1,0 +1,13 @@
+variável,tempo ASCII por saída (s),ASCII por saída (MB),Zarr zlib 1 estimado (MB),redução (×)
+density,0.9186,5.17,0.09,55.3
+viscosity,0.9103,9.82,4.42,2.2
+pressure,0.9181,10.25,0.79,13.0
+strain,0.8286,7.65,5.37,1.4
+strain_rate,0.8615,10.44,6.64,1.6
+temperature,2.3716,6.68,1.37,4.9
+heat,0.7549,2.98,0.17,17.3
+"velocity (vx, vz)",1.8096,21.81,13.26,1.6
+surface,,2.6,0.39,6.6
+partículas (step_*),0.11,39.27,6.91,5.7
+litologia (litho_*),0.18,364.4,2.83,129.0
+TOTAL por saída,9.66,481.1,42.2,11.4
