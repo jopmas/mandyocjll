@@ -62,7 +62,14 @@ computer and is in `.gitignore`; without it, PETSc_jll and MPICH_jll are used. A
 it, run `make` again (the shim and the image depend on it).
 
 `tools/use_petsc.jl` writes this file from a PETSc folder (the integer size, the scalar type and the MPI come from its
-`petscconf.h`, and `libmpi` is the one `libpetsc` is linked to), and `make` calls it when `PETSC_DIR` is given:
+`petscconf.h`, and `libmpi` is the one `libpetsc` is linked to). When `LocalPreferences.toml` does not exist, `make`
+chooses the first compatible PETSc (real double, MUMPS, OpenMPI or MPICH, loads, `libmpi` and `mpiexec` found):
+
+1. `PETSC_DIR`/`PETSC_ARCH` of the environment;
+2. on Linux (clusters), a PETSc built in `~/opt/petsc` (newest first), then the conda environment `tapioca`;
+   on macOS, the conda environment `tapioca` first, since PETSc built from source on the Mac often fails.
+
+Without a compatible PETSc, PETSc_jll and MPICH_jll are used. `make petsc` chooses again, and a given PETSc wins:
 
 ```bash
 make PETSC_DIR=/opt/miniconda3/envs/tapioca                                 # PETSc of a conda environment
