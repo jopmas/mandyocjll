@@ -58,6 +58,7 @@ Short runs of the examples in `examples/`:
 | `variable_velocity_field` | C++ with the same inputs, 3 steps across a reversal of `scale_bcv.txt` (4 ranks, `fssa_legacy`, no perturbation of the particles) | velocity 1.4e-6, temperature 2.2e-6 |
 | `punch` | C++ and the reference output of the tests of Mandyoc (`tests/data/punch`) | velocity 6.3e-4 (C++), 9.6e-4 (reference); C++ vs reference: 4.1e-4 |
 | `continental_rift` from its SVG (161 × 31) with `strain_healing` | C++, 4 steps, 2 ranks | velocity 4e-6, strain 2e-6 |
+| `continental_rift` from its SVG (161 × 31) with `shear_heating`, `Xi_shear = 5` | C++, 4 steps, 2 ranks | heat 1.6e-5, temperature 2.1e-6 |
 | `vanKeken1997_case1a`, `Crameri2012_case2`, `continental_rift`, `slab_detachment` | run, plots | no comparison yet beyond the tests above |
 | `continental_rift_with_surface_processes`, `continental_rift_non_dimensional` | stop with the list of options not ported | |
 

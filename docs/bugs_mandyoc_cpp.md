@@ -30,6 +30,7 @@ Código analisado: `mandyoc_jpm`, commit `64dc7d1`. Foi compilado com PETSc 3.24
 | 14 | `sticky_blanket_air` pula elementos na divisa dos processos | Paralelo | Por leitura | Resolvido |
 | 15 | Remoção de partículas depende da ordem no processo | Paralelo | Por leitura | Resolvido e testado |
 | 16 | `-seed` não valida a camada | Camada inexistente | Por leitura | Resolvido e testado |
+| 17 | Padrão de `viscosity_per_element` é uma opção removida | `param.txt` sem a chave | Por leitura | Interrompe com mensagem clara |
 
 O RK4 já é marcado como `not working yet!` em `header.h:50`, e todos os testes usam Euler. Os itens 1, 2 e 5 só afetam quem ativar `RK4 = Runge-Kutta`.
 
@@ -292,6 +293,14 @@ O laço vai só até `sx+mmx-2` e `sz+mmz-2` em cada processo, então a última 
 `weakening_seed[seed_layer[k]]` é escrito sem conferir se a camada existe; uma camada fora do intervalo escreve fora do array. O teste em `main.cpp` só compara a quantidade de valores com `n_interfaces + 1`, depois da escrita, e imprime `Error` sem interromper.
 
 **Sugestão** (não executada): conferir `0 <= seed_layer[k] <= n_interfaces` antes da escrita e interromper. **Julia:** resolvido; interrompe com mensagem.
+
+# 17. O padrão de `viscosity_per_element` é uma opção que não existe mais
+
+**Onde:** `src/header.h:37` e `src/DMSwarm2mesh.cpp:274`.
+
+O padrão é `visc_const_per_element = 0` (`variable`), mas `Swarm2Mesh_2d` imprime que `viscosity_per_element = variable` "is no longer available" e chama `exit(-2)`. Um `param.txt` sem a chave para depois de ler as entradas e montar as partículas, com uma mensagem que não diz qual valor usar. O `exit` dentro do MPI também não passa pelo `PetscFinalize`.
+
+**Sugestão** (não executada): mudar o padrão para `constant` (`visc_const_per_element = 1`) ou recusar `variable` já no `reader.cpp`, dizendo que o valor aceito é `constant`. **Julia:** exige `constant` ao ler o `param.txt` e interrompe com essa mensagem.
 
 # Observações a confirmar
 

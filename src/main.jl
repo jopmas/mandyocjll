@@ -10,6 +10,9 @@ function check_unsupported(d)
     parse(Float64, get(d, "basal_heat", "-1")) > 0 && push!(bad, "basal_heat")
     parse(Int, get(d, "dimensions", "2")) == 2 || push!(bad, "dimensions")
     isempty(bad) || error("options of param.txt not ported yet: " * join(bad, ", "))
+    # as in the C++ code, where "variable" (its default) is no longer available and stops the run
+    get(d, "viscosity_per_element", "variable") == "constant" ||
+        error("use viscosity_per_element = constant (variable, the default of Mandyoc, is no longer available)")
     on("interfaces_from_ascii") || error("use interfaces_from_ascii = True")
 end
 

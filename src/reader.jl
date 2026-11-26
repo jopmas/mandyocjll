@@ -26,7 +26,7 @@ function ModelParameters(d::Dict{String, String}; overrides...)
         gravity_acceleration = f("gravity_acceleration", 10.0), heat_capacity = f("heat_capacity", 1250.0),
         mantle_density = f("density_mantle", 3300.0), temperature_difference = f("temperature_difference", 1500.0),
         use_radiogenic_heating = b("radiogenic_component", false), use_adiabatic_heating = b("adiabatic_component", false),
-        use_shear_heating = b("shear_heating", false), high_diffusivity_in_asthenosphere = b("high_kappa_in_asthenosphere", false),
+        use_shear_heating = b("shear_heating", false), shear_heating_scale_factor = f("Xi_shear", 1.0), high_diffusivity_in_asthenosphere = b("high_kappa_in_asthenosphere", false),
         temperature_bc_top = b("top_temperature", true), temperature_bc_bottom = b("bot_temperature", true),
         temperature_bc_left = b("left_temperature", true), temperature_bc_right = b("right_temperature", true),
         solver_relative_tolerance = f("rtol", 1e-5), uzawa_residual_tolerance = f("denok", 1e-4),
