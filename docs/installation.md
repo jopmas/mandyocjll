@@ -61,7 +61,15 @@ PetscInt = "Int32"
 computer and is in `.gitignore`; without it, PETSc_jll and MPICH_jll are used. After creating, changing or deleting
 it, run `make` again (the shim and the image depend on it).
 
-On a cluster, point the same file to the MPI module and to a PETSc built with it, and run `make` on the cluster.
+`tools/use_petsc.jl` writes this file from a PETSc folder (the integer size, the scalar type and the MPI come from its
+`petscconf.h`, and `libmpi` is the one `libpetsc` is linked to), and `make` calls it when `PETSC_DIR` is given:
+
+```bash
+make PETSC_DIR=/opt/miniconda3/envs/tapioca                                 # PETSc of a conda environment
+make PETSC_DIR=$HOME/opt/petsc PETSC_ARCH=optimized-v3.24.1-openmpi           # PETSc built from source (Hypatia)
+```
+
+On a cluster, use the PETSc built with the MPI module there, and run `make` on the cluster.
 
 ## Threads
 
