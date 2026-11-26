@@ -10,11 +10,12 @@
 # make image    builds only the compiled image
 # make clean    removes what was built
 JULIA ?= julia
+# PETSC_DIR/PETSC_ARCH of the environment (e.g. exported in ~/.bashrc) are only the first candidates of --auto
 
 all: preferences packages shim image
 
 preferences:
-ifneq ($(PETSC_DIR),)
+ifeq ($(origin PETSC_DIR),command line)
 	$(JULIA) --startup-file=no tools/use_petsc.jl "$(PETSC_DIR)" "$(PETSC_ARCH)"
 else
 	@if [ -f LocalPreferences.toml ]; then echo "LocalPreferences.toml exists: keeping its PETSc (make petsc chooses again)"; \
@@ -22,7 +23,7 @@ else
 endif
 
 petsc:
-ifneq ($(PETSC_DIR),)
+ifeq ($(origin PETSC_DIR),command line)
 	$(JULIA) --startup-file=no tools/use_petsc.jl "$(PETSC_DIR)" "$(PETSC_ARCH)"
 else
 	$(JULIA) --startup-file=no tools/use_petsc.jl --auto
