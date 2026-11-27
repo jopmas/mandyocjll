@@ -2,7 +2,7 @@
 
 julia_version = "1.13.0"
 manifest_format = "2.1"
-project_hash = "0e4449d05481cbd2a975ea846a3f269a828c604c"
+project_hash = "69f415427dace50e0041688022c8f70ad8ce676c"
 
 [[deps.ArgTools]]
 uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
@@ -48,6 +48,13 @@ version = "0.10.2"
 deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
 uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 version = "1.7.0"
+
+[[deps.Fastscapelib_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "d72de8aea00f0f0c0732e3c1f9e8400cc6fec9e0"
+registries = "General"
+uuid = "85b6c75f-dabe-5cb8-ba5f-2ccb8070923d"
+version = "2.8.4+0"
 
 [[deps.FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
@@ -222,6 +229,12 @@ git-tree-sha1 = "032f6fdc1918f6250cf2fd09da8b77963098c631"
 registries = "General"
 uuid = "ca64183c-ec4f-5579-95d5-17e128c21291"
 version = "5.9.6+0"
+
+[[deps.Mandyocjll]]
+deps = ["Fastscapelib_jll", "Libdl", "MPI", "OffsetArrays", "PETSc", "Printf", "Zlib_jll"]
+path = "."
+uuid = "484cf12e-ea37-417f-acb1-eadb69aa687d"
+version = "0.1.0"
 
 [[deps.Markdown]]
 deps = ["Base64", "JuliaSyntaxHighlighting", "StyledStrings"]

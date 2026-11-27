@@ -29,7 +29,8 @@ Esta apostila explica o modelo físico, os métodos numéricos, a organização 
 | Stokes Q1-P0 com iterações de Uzawa, FSSA, iterações não lineares e rampa de viscosidade | sim | sim |
 | 13 reologias, plasticidade de Drucker-Prager com amolecimento, cicatrização da deformação | sim | sim |
 | Calor radiogênico, adiabático e por cisalhamento; difusividade por camada; fluxo de calor na base | sim | sim |
-| Superfície livre rastreada e processos superficiais (difusão e três modos de sedimentação) | sim | não (como no C++) |
+| Superfície livre rastreada e processos superficiais (difusão e três modos de sedimentação) | sim | rastreamento e difusão (novos; o C++ não tem) |
+| Erosão e sedimentação com a FastScape (`sp_mode = fastscape`, novo) | sim | sim |
 | Magmatismo: fusão parcial, calor latente, extração e extrusão | sim | não (como no C++) |
 | Fronteira periódica | sim | não (como no C++) |
 | Velocidades variáveis no tempo (`scale_bcv.txt`, `multi_velocity`) | sim | sim |
@@ -121,6 +122,14 @@ com $\theta$ = `theta_FSSA`. No C++ o peso efetivo do termo é diferente do nomi
 
 Com `sp_surface_tracking`, uma linha de pontos acompanha a superfície da rocha. Ela é transportada com a velocidade e reamostrada em pontos igualmente espaçados a cada passo. Com `sp_surface_processes`, a superfície também muda por difusão ($\partial h / \partial t = \kappa_s \nabla^2 h$, modo `diffusion`) ou por sedimentação (`sedimentation_only`, `sedimentation_rate_limited` e `theunissen_sedimentation`, este com progradação a partir das margens). Depois da mudança, as partículas de ar abaixo da superfície viram sedimento (a camada ativa de `sediment_layers.txt`), e as de rocha acima dela viram ar.
 
+O modo `fastscape` (novo, não existe no C++) entrega a superfície à FastScape (Braun & Willett, 2013; Yuan et al., 2019), que resolve a erosão fluvial pela lei de potência do canal (*stream power law*), a difusão das encostas e, opcionalmente, o transporte e a deposição marinhos:
+
+$$
+\frac{\partial h}{\partial t} = U - K_f A^m S^n + K_d \nabla^2 h + \frac{G}{A} \int_A \left( U - \frac{\partial h}{\partial t} \right) dA
+$$
+
+onde $U$ é o soerguimento (aqui, a mudança tectônica da superfície calculada pelo mandyocjll), $A$ a área de drenagem, $S$ a declividade, $K_f$ = `fastscape_kf`, $K_d$ = `fastscape_kd` e $G$ = `fastscape_g` o coeficiente de deposição. Em 2D a superfície é um perfil: a FastScape o vê como uma faixa de rios paralelos de largura `fastscape_strip_width`, de modo que a área de drenagem de um ponto é o comprimento do perfil a montante vezes essa largura.
+
 ## Magmatismo
 
 Com `magmatism = on`, cada partícula acompanha a fração de fusão $\phi$, a depleção $X = 1/(1-\phi)$ e o último incremento de fusão $\Delta\phi$. O solidus sobe com a pressão e com a depleção:
@@ -209,11 +218,15 @@ As caixas tracejadas só existem quando a opção correspondente está ligada.
 
 A superfície rastreada é um vetor de pontos $(x, z)$ replicado em todos os processos. A advecção de cada ponto é feita pelo processo dono do elemento onde ele está, e o resultado é somado entre os processos. Isso evita os problemas da superfície dividida entre processos do C++ (bugs 18 a 21) e mantém os resultados independentes da partição.
 
+Em 3D (novo) a superfície é a altura de uma grade regular de pontos em $(x, y)$, também replicada. Ela é transportada por um passo semi-Lagrangiano: a altura nova de um ponto da grade é a altura no ponto de partida $(x, y) - \Delta t\, \mathbf{v}$ (achado com duas iterações de ponto fixo), mais $\Delta t$ vezes a velocidade vertical ali. Em primeira ordem em $\Delta t$ é o mesmo esquema do 2D (mover os pontos e reamostrar).
+
+O acoplamento com a FastScape (`src/fastscape.jl`) chama a biblioteca em Fortran (`Fastscapelib_jll`) só no processo 0, porque ela guarda uma única grade em variáveis globais; a superfície nova é enviada aos outros processos. A grade da FastScape é a própria grade dos pontos da superfície (em 2D, a faixa de 4 linhas idênticas e periódica em y). A cada passo: (1) a mudança da superfície desde a última chamada é passada como taxa de soerguimento; (2) a FastScape roda durante $\Delta t$ em subpassos de no máximo `fastscape_dt_max` anos, aplicando o soerguimento e a erosão em cada um; (3) a altura nova substitui a superfície e as partículas cruzadas por ela mudam de camada. A FastScape guarda o seu próprio embasamento, e por isso sabe onde há sedimento.
+
 A fusão é calculada em cada atualização das partículas (`melt_particle!`), em precisão simples, como no C++. O calor latente entra na equação do calor com o $\Delta\phi$ projetado na malha, e a extração (`extract_melt!`, em `src/magmatism.jl`) soma o aumento de $\phi$ nos nós desde a última extração.
 
 ## Três dimensões
 
-O 3D usa os mesmos métodos com hexaedros trilineares: 27 pontos de Gauss, $K$ de 24 × 24 por elemento, o mesmo Uzawa (a função `uzawa!` é compartilhada) e a advecção de Euler. As partículas são localizadas pela mesma regra, com a biblioteca em C. As saídas têm as dimensões `(time, z, y, x)`. Como no C++, não há superfície rastreada, magmatismo nem fronteira periódica em 3D; diferente do C++, o mandyocjll tem em 3D a difusividade por camada, o aquecimento por cisalhamento, o fluxo de calor na base e o FSSA.
+O 3D usa os mesmos métodos com hexaedros trilineares: 27 pontos de Gauss, $K$ de 24 × 24 por elemento, o mesmo Uzawa (a função `uzawa!` é compartilhada) e a advecção de Euler. As partículas são localizadas pela mesma regra, com a biblioteca em C. As saídas têm as dimensões `(time, z, y, x)`. Como no C++, não há magmatismo nem fronteira periódica em 3D; a superfície rastreada em 3D é nova, com os modos `diffusion` e `fastscape`; diferente do C++, o mandyocjll tem em 3D a difusividade por camada, o aquecimento por cisalhamento, o fluxo de calor na base e o FSSA.
 
 ## Adimensionalização
 
@@ -232,7 +245,8 @@ No C++, `nondimensionalization = True` resolve as equações em unidades da prof
 | `src/stokes.jl`, `src/stokes3d.jl` | Stokes Q1-P0, FSSA, iterações de Uzawa (`uzawa!`) |
 | `src/rheology.jl` | `LayerProperties`, viscosidade das partículas, partículas $\to$ malha, ar, pressão, o `Model` e o passo de tempo |
 | `src/rheology3d.jl` | as mesmas funções em 3D e o construtor `Model3D` |
-| `src/surface.jl` | superfície rastreada e processos superficiais |
+| `src/surface.jl` | superfície rastreada e processos superficiais, em 2D e 3D |
+| `src/fastscape.jl` | acoplamento com a FastScape: chamadas da API em Fortran, no processo 0 |
 | `src/magmatism.jl` | extração e extrusão do magma |
 | `src/reader.jl` | leitura de `param.txt`, `interfaces.txt`, campos ASCII e arquivos com tempos |
 | `src/particle_control.jl` | adição e remoção de partículas em 2D |
@@ -412,10 +426,11 @@ julia --project=. test/mpirun.jl 4 test_thermal.jl       # 4 processos
 julia --project=. test/mpirun.jl 4 test_stokes.jl
 julia --project=. test/mpirun.jl 4 test_thermal3d.jl
 julia --project=. test/mpirun.jl 4 test_stokes3d.jl
+julia --project=. test/mpirun.jl 4 test_surface.jl
 julia --project=. test/mpirun.jl 4 test_particle_control.jl native
 ```
 
-Cada teste imprime `RESULT OK` ou `RESULT FAIL`. Eles verificam, entre outros: a ordem de convergência 2 da difusão e do Stokes, soluções estacionárias exatas nos nós (duas camadas de difusividade diferente, calor radiogênico, escoamento de Couette em duas camadas), o peso efetivo do FSSA, a migração de 243.000 partículas entre processos e o controle de partículas, sempre com 1 e 4 processos.
+Cada teste imprime `RESULT OK` ou `RESULT FAIL`. Eles verificam, entre outros: a ordem de convergência 2 da difusão e do Stokes, soluções estacionárias exatas nos nós (duas camadas de difusividade diferente, calor radiogênico, escoamento de Couette em duas camadas), o peso efetivo do FSSA, a migração de 243.000 partículas entre processos e o controle de partículas, sempre com 1 e 4 processos. `test_surface.jl` move a superfície 2D e 3D com uma velocidade prescrita e compara com a altura exata (erro de 30 m para um soerguimento de 3 km, vindo da interpolação no espaço, igual em 2D e 3D), e compara o perfil estacionário de um rio da FastScape, com soerguimento uniforme, com a solução discreta exata (erro relativo de 5e-15, na faixa 2D e na grade 3D).
 
 ![Duas camadas de difusividade diferente (exemplo `two_layers_with_variable_conductivity`): temperatura após 50 Myr contra a solução analítica estacionária; erro máximo de 0,87 °C.](figures/fig_two_layers.png)
 
@@ -443,6 +458,10 @@ Cada teste imprime `RESULT OK` ou `RESULT FAIL`. Eles verificam, entre outros: a
 ![Cicatrização da deformação e aquecimento por cisalhamento: campos do mandyocjll e diferença relativa para o C++ após 4 passos.](figures/fig_healing_shear.png)
 
 ![Processos superficiais: mudança da superfície após 3 passos nos quatro modos. Nos modos `diffusion` e `sedimentation_only` a mudança é pequena e o C++ só a escreve com resolução de 0,1 m (6 algarismos em 40 km), daí os degraus; nos modos de sedimentação as curvas se sobrepõem.](figures/fig_surface_processes.png)
+
+A FastScape não existe no C++, então sua validação é feita contra soluções exatas. Com soerguimento uniforme e um único nível de base, o perfil estacionário de um rio com $n = 1$ é exato na forma discreta: $h_i - h_0 = \sum_{j \le i} (U/K_f)\, \Delta x\, A_j^{-m}$, com $A_j$ a área a montante. A FastScape acoplada reproduz esse perfil com erro relativo de $10^{-15}$, tanto na faixa 2D quanto na grade 3D. No rift do exemplo `continental_rift_with_surface_processes` (malha de 10 km, 20 Myr, 4 processos), a FastScape erode os ombros e preenche a bacia, e o relevo fica muito menor que sem processos. A difusão com o `sp_d_c = 1 m²/s` do exemplo aplaina tudo. Com os 6.401 pontos de superfície que o tapIOca escreve (`surface_particles_per_element = 40`), a rodada com FastScape levou 663 s, contra 402 s sem processos. A difusão explícita do Mandyoc precisou de 2 pontos por elemento: com 40, ela exige cerca de $2 \times 10^7$ subpassos por passo de tempo.
+
+![Acima: perfil estacionário de um rio da FastScape (soerguimento de 1 mm/ano, $K_f = 2 \times 10^{-5}$, $m = 0{,}4$, largura de 20 km) contra a solução discreta exata (`test/test_surface.jl`). Abaixo: superfície do rift de `continental_rift_with_surface_processes` (malha de 10 km) de 0 a 20 Myr sem processos superficiais, com difusão (`sp_d_c = 1 m²/s`) e com a FastScape (com transporte marinho).](figures/fig_fastscape.png)
 
 ![Magmatismo: fração de fusão, extrusão (nos dois códigos em x = 0, bug 25) e a queda do incremento de fusão com o número de iterações não lineares (bug 22).](figures/fig_magmatism.png)
 
@@ -519,6 +538,7 @@ O C++ deve ser compilado numa cópia temporária, sem alterar os repositórios d
 
 - **RK4**: o Runge-Kutta do C++ não funciona (bugs 1 e 2); será portado quando for corrigido no C++.
 - **Restart** e `T_initial` diferente de 0 e 1 (use `temperature_from_ascii`).
-- **3D**: superfície rastreada, processos superficiais, magmatismo e fronteira periódica, que também não existem no 3D do C++.
+- **3D**: magmatismo e fronteira periódica, que também não existem no 3D do C++; dos processos superficiais, só há `diffusion` e `fastscape` em 3D.
+- **FastScape**: $K_f$ e $K_d$ por litologia da superfície (hoje são uniformes) e a estratigrafia da FastScape (`FastScape_Strati`).
 - **Saídas**: litologia e trajetórias de partículas em 3D.
 - **Validação longa**: comparar um cenário completo com fusão natural (por exemplo, os casos `Ho35S1` de `tests_rft`) ao longo de dezenas de Myr, e o caso de referência `continental_rift_with_magmatism` dos testes do Mandyoc.

@@ -16,12 +16,12 @@ of the NetCDF files that tapIOca writes from the text outputs of Mandyoc (`meshe
 | `thermal_diffusivity.zarr` | `thermal_diffusivity` | m2/s | `export_thermal_diffusivity = True` |
 | `lithology.zarr` | `lithology` (layer ID, `int8`) on a mesh 5 times finer | | `export_lithology = True` |
 | `Phi.zarr`, `dPhi.zarr`, `X_depletion.zarr` | `Phi` (melt fraction), `dPhi` (its last increment, see bug 22), `X_depletion` (depletion, 1/(1 - Phi)) | | `magmatism = on` |
-| `surface.zarr` | `surface` (height of the surface at `x`, measured from the top of the model, negative below it) | m | `sp_surface_tracking = True` or `sp_surface_processes = True` |
+| `surface.zarr` | `surface` (height of the surface at `x`, measured from the top of the model, negative below it; in 3D at `x` and `y`, dimensions `(time, y, x)`) | m | `sp_surface_tracking = True` or `sp_surface_processes = True` |
 | `particles_trajectories.zarr` | `x`, `z`, `lithology`, `strain` of the first particle of each element, by `id` | m | `print_step_files = True` |
 
 The mesh stores have the coordinates `time` (Myr), `step`, `x` and `z` (m, `z` from `-lz` to 0) and the dimensions
 `(time, z, x)`, one chunk per output. In 3D they also have `y` (m, from 0 to `ly`), the dimensions are
-`(time, z, y, x)` and the velocity has `vx`, `vy` and `vz`; there are no lithology, trajectory and surface stores. The trajectories have the dimensions `(time, id)`; removed particles have
+`(time, z, y, x)` and the velocity has `vx`, `vy` and `vz`; there are no lithology and trajectory stores. The trajectories have the dimensions `(time, id)`; removed particles have
 `-999` (`lithology`: -1), as in `particles2netcdf.jl`. Each output appends to the stores, so they can be read while
 the run goes on.
 

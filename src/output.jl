@@ -236,6 +236,20 @@ function write_surface_store(w, surface, Lx)
     write_metadata(store, arrays, Dict{String, Vector{Int}}("time" => [nt], "step" => [nt], "x" => [n], "surface" => [nt, n]), w.level)
 end
 
+"Surface in 3D (surface.zarr): the height of the regular points, dimensions (time, y, x)."
+function write_surface_store(w, surface::Surface3D, Lx)
+    store = joinpath(w.path, "surface.zarr"); nt = length(w.times); nx, ny = size(surface.z)
+    x, y = axis_array("x", nx), axis_array("y", ny)
+    height = ZarrArray("surface", Float32, ["time", "y", "x"], [1, ny, nx], Dict{String, Any}("long_name" => "surface", "units" => "m"))
+    arrays = vcat(time_arrays(), [x, y, height])
+    if nt == 1
+        write_chunk(store, x, (0,), surface.x, w.level); write_chunk(store, y, (0,), surface.y, w.level)
+    end
+    write_chunk(store, height, (nt - 1, 0, 0), surface.z, w.level)
+    write_times(w, store)
+    write_metadata(store, arrays, Dict{String, Vector{Int}}("time" => [nt], "step" => [nt], "x" => [nx], "y" => [ny], "surface" => [nt, ny, nx]), w.level)
+end
+
 "Appends the current state of the model to the zarr stores."
 function write_output!(w::OutputWriter, s::Model, step; surface = nothing)
     start = MPI.Wtime(); comm = MPI.COMM_WORLD; m = s.m; rank, np = MPI.Comm_rank(comm), MPI.Comm_size(comm)
@@ -260,6 +274,7 @@ function write_output!(w::OutputWriter, s::Model, step; surface = nothing)
                 [(name, T, u, a[1, :, :, :])]
             write_mesh_store3(w, name, m, fields)
         end
+        surface !== nothing && rank == length(w.variables) % np && write_surface_store(w, surface, m.Lx)
         MPI.Barrier(comm); w.seconds += MPI.Wtime() - start
         return
     end

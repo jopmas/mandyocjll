@@ -26,7 +26,8 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
 - **Surface**: the surface of `sp_surface_tracking`, advected with the particles and resampled every step, and the
   surface processes of `sp_mode` (diffusion and the sedimentation modes, with `sediment_layers.txt`,
   `sedimentation_rate.txt` and `base_level.txt`), which turn air particles below the surface into sediment and rock
-  above it into air (`sp.cpp`).
+  above it into air (`sp.cpp`). New: the coupling with FastScape (`sp_mode = fastscape`) and the surface in 3D
+  (below).
 - **Magmatism**: melt fraction, depletion and last increment of each particle, from a solidus that rises with the
   pressure and the depletion; the viscosity factor of the melt (Lu & Huismans, 2021); the latent heat in the heat
   equation; and, at the output steps, the extraction of the new melt to the surface as a Gaussian (sigma = 10 km)
@@ -66,3 +67,37 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
 
 With these differences, the results of the two codes are not bit-identical. See [validation.md](validation.md) for
 the size of the differences.
+
+## Surface in 3D
+
+The C++ code has no surface in 3D. Here the surface is the height of a regular grid of points
+(`surface_particles_per_element` per element in x and in y), replicated on every rank. At each advection substep
+it moves with the velocity of the substep by a semi-Lagrangian step: the point that the velocity brings to the grid
+point (x, y) starts at (x, y) - dt v, found with two fixed point iterations, and the new height is the height there
+(bilinear interpolation) plus dt times the vertical velocity there. To first order in dt this is the 2D scheme (the
+points move with the velocity and the surface is resampled on the regular points). The velocity of each point is
+computed by the rank that owns its element and summed over the ranks, so the surface does not depend on the number
+of ranks. The particles above the surface become air, and the air below it the active sediment layer, with the
+height interpolated at the particle (in 2D the C++ code uses the mean of the two neighbors). `sp_mode = diffusion`
+is explicit in x and y, with the edges kept at the height of their neighbors, as in 2D.
+
+## Erosion and sedimentation with FastScape
+
+`sp_mode = fastscape` calls FastScapeLib (`Fastscapelib_jll`, the Fortran library of FastScape) on rank 0; the new
+surface is broadcast to the other ranks. The grid of FastScape is the grid of the surface points, so no
+interpolation is needed: in 3D the regular points; in 2D the profile of regular points (from 0 to `lx`) is extended
+to a strip of 4 identical rows spaced by `fastscape_strip_width`, periodic in y, so that each row is a river of
+that width (with 3 rows the periodic boundary of FastScape mixes the rows).
+
+At each step, after the advection of the surface:
+
+1. the change of the surface since the end of the last call of FastScape (the tectonics, and the extrusion of the
+   melt) is given to FastScape as an uplift rate, `(z - z_previous) / dt`;
+2. FastScape runs during dt in `ceil(dt / fastscape_dt_max)` substeps; each substep applies the uplift and then the
+   stream power law, the hillslope diffusion and, with `fastscape_marine`, the marine transport;
+3. the new height (in 2D the mean of the rows) replaces the surface, and the particles crossed by it change layer.
+
+FastScape keeps its own basement, so it knows where the sediments are (`fastscape_kfsed`, `fastscape_kdsed`,
+`fastscape_gsed`). The sides with a fixed base level (`fastscape_boundary`) are not eroded, but they move with the
+tectonics. `test/test_surface.jl` checks the steady river profile with uniform uplift against the exact discrete
+solution, in the 2D strip and on a 3D grid.

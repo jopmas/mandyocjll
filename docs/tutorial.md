@@ -93,5 +93,33 @@ python make_inputs.py
 ~/opt/mandyocjll/bin/mandyocjll -n 4 -seed 0,2 -strain_seed 0.0,1.0
 ```
 
-The outputs have the extra dimension `y` (`T.sel(y=30e3, method="nearest")` gives a section). Magmatism, the surface
-tracking and the periodic boundary are not available in 3D, as in the C++ code.
+The outputs have the extra dimension `y` (`T.sel(y=30e3, method="nearest")` gives a section). Magmatism and the
+periodic boundary are not available in 3D, as in the C++ code. The surface tracking works in 3D (new), with
+`sp_mode = diffusion` or `fastscape`; `surface.zarr` then has the dimensions `(time, y, x)`.
+
+## 6. Erosion and sedimentation with FastScape
+
+`sp_mode = fastscape` replaces the surface processes of Mandyoc by FastScape (stream power erosion, hillslope
+diffusion and, optionally, marine deposition). In `param.txt`:
+
+```
+sp_surface_tracking  = True
+sp_surface_processes = True
+sp_mode              = fastscape
+fastscape_kf         = 1.0e-5       # m^(1-2m)/yr
+fastscape_kd         = 1.0e-2       # m2/yr
+fastscape_strip_width = 20000       # 2D: width of the river of the profile (m)
+```
+
+and a `sediment_layers.txt` with the layer that receives the sediments: the number of changes over time (here 0),
+then the layer (counted from 0, the deepest), then a pair `time (Myr) layer` per change. A layer of its own for the
+sediments (an interface with the properties of the sediments) makes them easy to see in the lithology:
+
+```
+0
+5
+```
+
+[parameters.md](parameters.md#erosion-and-sedimentation-with-fastscape) lists the other keys (exponents,
+deposition, boundaries, marine transport) and [numerics.md](numerics.md#erosion-and-sedimentation-with-fastscape)
+explains the coupling. The units of the `fastscape_*` keys are those of FastScape: m and years.

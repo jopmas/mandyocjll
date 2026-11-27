@@ -13,7 +13,8 @@
 | `src/stokes.jl`, `src/stokes3d.jl` | Stokes (Q1-P0, FSSA) in 2D and 3D; the Uzawa iterations (`uzawa!`) are shared |
 | `src/rheology.jl` | viscosity, plasticity, strain, particles to mesh, pressure, nonlinear loop, viscosity ramp, the `Model` |
 | `src/rheology3d.jl` | the same in 3D: particles, particles to mesh, pressure, addition and removal, `Model3D` |
-| `src/surface.jl` | surface tracking and surface processes (2D) |
+| `src/surface.jl` | surface tracking and surface processes (2D and 3D) |
+| `src/fastscape.jl` | coupling with FastScapeLib (`sp_mode = fastscape`): calls of its Fortran API, on rank 0 |
 | `src/magmatism.jl` | melt extraction and extrusion (the melting is in `src/rheology.jl`) |
 | `src/output.jl` | zarr writer |
 | `src/main.jl` | `run_scenario`: reads a scenario and runs it |

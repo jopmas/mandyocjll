@@ -8,7 +8,6 @@ function check_unsupported(d)
     get(d, "RK4", "Euler") == "Euler" || push!(bad, "RK4")
     if parse(Int, get(d, "dimensions", "2")) == 3     # options the 3D C++ code does not have either
         on("magmatism") && push!(bad, "magmatism in 3D")
-        (on("sp_surface_tracking") || on("sp_surface_processes")) && push!(bad, "surface tracking and processes in 3D")
         on("periodic_boundary") && push!(bad, "periodic_boundary in 3D")
     end
     isempty(bad) || error("options of param.txt not ported yet: " * join(bad, ", "))
@@ -104,8 +103,8 @@ function run_scenario(dir, out; seeds = Int[], strain_seeds = Float64[], h_air =
         say("warning: export_lithology and print_step_files are not available in 3D (ignored)")
         d["export_lithology"] = d["print_step_files"] = "False"
     end
-    surface = three ? nothing : Surface(d, m, layers, dir)
-    surface === nothing || say("surface: $(length(surface.x)) points" * (surface.processes ? ", sp_mode = $(surface.mode)" : ""))
+    surface = Surface(d, m, layers, dir)
+    surface === nothing || say("surface: " * join(size(surface.z), " x ") * " points" * (surface.processes ? ", sp_mode = $(surface.mode)" : ""))
     extraction = m.use_magmatism && m.use_melt_extraction && surface !== nothing ? MeltExtraction() : nothing
     m.use_magmatism && m.use_melt_extraction && surface === nothing &&
         say("magmatism_extraction = on needs sp_surface_tracking = True: the melt is not extracted (as in the C++ code)")

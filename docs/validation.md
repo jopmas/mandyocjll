@@ -19,6 +19,7 @@ julia --project=. test/mpirun.jl 4 test_open_boundary.jl shim
 julia --project=. test/mpirun.jl 4 test_particle_control.jl native
 julia --project=. test/mpirun.jl 4 test_thermal3d.jl
 julia --project=. test/mpirun.jl 4 test_stokes3d.jl
+julia --project=. test/mpirun.jl 4 test_surface.jl
 julia --project=. test/test_rheology.jl <mandyoc>/src <petsc>/include
 julia --project=. test/mpirun.jl 1 van_keken.jl 81 6 300
 ```
@@ -32,6 +33,7 @@ Each test prints `RESULT OK` or `RESULT FAIL`:
 | `test_stokes.jl` | two-layer Couette flow, closed and periodic; effective weight of the FSSA | 1e-14; FSSA as intended and as in C++ |
 | `test_open_boundary.jl` | particles leaving at an open boundary | exact count, positions 1e-10 m |
 | `test_particle_control.jl` | particles per element and layers after adding and removing | within the limits, same hash for any number of ranks |
+| `test_surface.jl` | surface moved by a prescribed velocity (uniform horizontal, vertical varying in x and y) in 2D and 3D, against the exact height; steady river profile of FastScape with uniform uplift, in the 2D strip and on a 3D grid, against the exact discrete profile | surface within 30 m of an uplift of 3 km (interpolation in space), the same in 2D and 3D and with 1, 2 and 4 ranks; river profile 5e-15 |
 | `test_rheology.jl` | viscosity of the 13 rheologies against the C++ function (compiled from the Mandyoc source) | 1e-14 |
 | `van_keken.jl` | van Keken et al. (1997), case 1a | vrms peak 0.003103 (C++: 0.003111) |
 
@@ -77,3 +79,21 @@ above `Xi_min = 1e-12`, so the differences are at the level of the last iteratio
 The zarr stores were read with the official `zarr` 3.4.2 and xarray, and `tools/zarr2nc.py` gives the same values
 as the NetCDF files written by tapIOca from the text outputs. The compiled image gives the same results as the
 uncompiled code (1e-11).
+
+## Surface in 3D and FastScape (not in the C++ code)
+
+Besides `test_surface.jl`, full runs:
+
+- `continental_rift_with_surface_processes` from its SVG (10 km mesh, 20 Myr, 4 ranks) without surface processes,
+  with `sp_mode = diffusion` and with `sp_mode = fastscape` (`fastscape_marine = True`): FastScape erodes the
+  shoulders and fills the basin (figure in the handbook, `docs/apostila`). With the 6,401 surface points written by
+  tapIOca (`surface_particles_per_element = 40`) the run took 663 s, against 402 s without surface processes. The
+  explicit diffusion of Mandyoc with 40 points per element needs about 2e7 substeps per step (2 were used).
+- The rift of `continental_rift_with_surface_processes` (161 × 31) extruded in y (161 × 3 × 31, free front and back
+  faces), with surface tracking only, `diffusion` and `fastscape`: the runs end without errors; the 3D surface
+  differs from the 2D one by about 25% of its change in 1 Myr, as the vertical velocity at the surface (10%,
+  and 20% between the rows in y, from the random positions of the particles), so this is not a test of the surface.
+- The 2D surface code is unchanged: without the compiled image, the outputs of a 2D run with `sp_mode = diffusion`
+  are the same as those of the previous commit (to 1e-22 in the velocity). With the image the nonlinear iterations
+  differ (rounding), as before.
+

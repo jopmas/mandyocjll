@@ -224,7 +224,35 @@ def tutorial():
     save(fig, "fig_tutorial_lithology.png")
 
 
+# ---- 10. FastScape: steady river profile (test/test_surface.jl) and the surface of a rift with each sp_mode ----
+def fastscape():
+    runs = [("none", "no surface processes"), ("diffusion", "sp_mode = diffusion"), ("fastscape", "sp_mode = fastscape (marine)")]
+    if not needs("surface_test", *(f"fastscape/{r}" for r, _ in runs)): return
+    fig = plt.figure(figsize=(7.4, 5.6))
+    upper, lower = fig.subfigures(2, 1, height_ratios=[1, 1.15])
+    a, e = upper.subplots(1, 2, gridspec_kw={"width_ratios": [2, 1]})
+    p2 = pd.read_csv(R / "surface_test/river_profile_2d.csv"); p3 = pd.read_csv(R / "surface_test/river_profile_3d.csv")
+    a.plot(p2.x / 1e3, p2.exact, color=CPP, lw=3, alpha=0.5, label="exact (discrete)")
+    a.plot(p2.x / 1e3, p2.fastscape, color=JL, lw=1.2, label="2D strip")
+    a.plot(p3.x[::5] / 1e3, p3.fastscape[::5], "o", color=JL, ms=3.5, label="3D grid")
+    a.set_xlabel("distance from the base level (km)"); a.set_ylabel("height (m)"); a.legend(loc="lower right")
+    a.set_title("steady river profile, uplift 1 mm/yr", loc="left")
+    e.semilogy(p2.x / 1e3, np.abs(p2.fastscape - p2.exact) / p2.exact.max() + 1e-17, color=JL, lw=1.2)
+    e.set_xlabel("distance (km)"); e.set_ylabel("relative error"); e.set_title("error", loc="left"); e.set_ylim(1e-17, 1e-12)
+    times = [0, 5, 10, 15, 20]
+    seq = [cm.batlow(i / (len(times) - 1) * 0.85) for i in range(len(times))]
+    for n, ((r, label), ax) in enumerate(zip(runs, lower.subplots(1, 3, sharey=True))):
+        s = xr.open_zarr(R / f"fastscape/{r}/surface.zarr"); z0 = float(s.surface[0, 0])
+        for t, c in zip(times, seq):
+            ax.plot(s.x / 1e3, (s.surface.sel(time=t, method="nearest") - z0) / 1e3, color=c, lw=1.1, label=f"{t} Myr")
+        ax.set_xlim(500, 1100); ax.set_ylim(-1.2, 2.0); ax.set_title(label, loc="left", fontsize=8)
+        ax.set_xlabel("x (km)")
+        if n == 0: ax.set_ylabel("surface (km)"); ax.legend(loc="upper left", fontsize=7, ncol=2)
+    save(fig, "fig_fastscape.png")
+
+
 FIGURES = dict(two_layers=two_layers, punch=punch, variable_velocity=variable_velocity, healing_shear=healing_shear,
-               surface_processes=surface_processes, magmatism=magmatism, denok=denok, three_d=three_d, tutorial=tutorial)
+               surface_processes=surface_processes, magmatism=magmatism, denok=denok, three_d=three_d, tutorial=tutorial,
+               fastscape=fastscape)
 for name in sys.argv[2:] or FIGURES:
     print(f"-- {name}"); FIGURES[name]()
