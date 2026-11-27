@@ -86,7 +86,7 @@ function particle_viscosity(m::ModelParameters, range::ViscosityRange, l::LayerP
     return range.computed_min_viscosity * exp(f1 * log(eta / m.min_viscosity) / log(m.max_viscosity / m.min_viscosity))
 end
 
-# ---- moveSwarm: T, P, strain, viscosity and (Euler) position ----------------
+# ---- moveSwarm: T, P, strain, viscosity and (Euler or RK4) position --------
 "Calls f with the melt fields of the particles (X, Phi, dPhi), or with nothing without the magmatism."
 function with_melt_fields(f, m, swarm)
     m.use_magmatism || return f(nothing)
@@ -101,22 +101,25 @@ end
 
 """
 Updates the strain rate, the accumulated strain, the viscosity and the melt of the particles, and moves them
-(Euler) if `move`. `local_velocity` is from `da_advection`. Without `move`, dt only accumulates strain.
+if `move`: Euler with `local_velocity`, or RK4 with the local velocities at the start and at the end of the step
+(`runge_kutta_4 = (V0, V1)`); all from `da_advection`. Without `move`, dt only accumulates strain.
 Returns the position (x, z) of the shallowest particle that melted in this call (x_magma_high, z_magma_high),
 or (0, -depth) if none did.
 """
 function update_particles!(m, range, layers, swarm, da_advection, local_velocity, da_Thermal, local_temperature,
-    local_pressure_thermal_mesh, dt; move = false)
+    local_pressure_thermal_mesh, dt; move = false, runge_kutta_4 = nothing)
     shallowest = Ref((0.0, -m.domain_depth))
-    PETSc.with_local_array!(local_velocity, local_temperature, local_pressure_thermal_mesh; write = false) do v, t, pr
+    extra = runge_kutta_4 === nothing ? () : runge_kutta_4
+    PETSc.with_local_array!(local_velocity, local_temperature, local_pressure_thermal_mesh, extra...; write = false) do v, t, pr, rk...
         V, T, Pn = local_view(da_advection, v, 2), local_view(da_Thermal, t), local_view(da_Thermal, pr)
+        stages = isempty(rk) ? nothing : map(a -> local_view(da_advection, a, 2), rk)
         with_field(swarm, PIC_COORDINATES, Float64) do coor
         with_field(swarm, "layer", PInt) do layer
         with_field(swarm, "geoq_fac", Float64) do viscosity
         with_field(swarm, "strain_fac", Float64) do strain
         with_field(swarm, "strain_rate_fac", Float64) do strain_rate
         with_melt_fields(m, swarm) do melt
-            shallowest[] = update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain, strain_rate, melt, dt, move)
+            shallowest[] = update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain, strain_rate, melt, dt, move, stages)
         end end end end end end
     end
     move && LibPETSc.DMSwarmMigrate(petsclib, swarm, LibPETSc.PETSC_TRUE)
@@ -157,7 +160,7 @@ end
 const MELT_TIE_DEPTH = 0.01              # (m)
 shallower(x, z, x0, z0) = z > z0 + MELT_TIE_DEPTH || (z >= z0 - MELT_TIE_DEPTH && x < x0)
 
-function update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain, strain_rate, melt, dt, move)
+function update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain, strain_rate, melt, dt, move, stages = nothing)
     dx, dz = element_size_x(m), element_size_z(m); e = m.boundary_offset
     shallowest_x, shallowest_z = 0.0, -m.domain_depth           # x_magma_high, z_magma_high
     image(i, A, d) = m.periodic_boundary ? (i < firstindex(A, d) ? i + m.Nx : i + 1 > lastindex(A, d) ? i - m.Nx : i) : i
@@ -179,8 +182,12 @@ function update_loop!(m, range, layers, V, T, Pn, coor, layer, viscosity, strain
         mean = (exx + ezz) / 3
         e2 = sqrt(((exx - mean)^2 + mean^2 + (ezz - mean)^2 + g^2 / 2) / 2)
         if move
-            u = linear_interpolation(rx, rz, V[1, j, k], V[1, j+1, k], V[1, j, k+1], V[1, j+1, k+1])
-            w = linear_interpolation(rx, rz, V[2, j, k], V[2, j+1, k], V[2, j, k+1], V[2, j+1, k+1])
+            if stages === nothing
+                u = linear_interpolation(rx, rz, V[1, j, k], V[1, j+1, k], V[1, j, k+1], V[1, j+1, k+1])
+                w = linear_interpolation(rx, rz, V[2, j, k], V[2, j+1, k], V[2, j, k+1], V[2, j+1, k+1])
+            else    # RK4 from the position at t_n; T, P and the strain rate stay there, as in Euler
+                u, w = runge_kutta_4_velocity(m, stages..., x, z, dt)
+            end
             xn = coor[2p-1] + dt * u
             coor[2p-1] = m.periodic_boundary ? mod(xn, m.Lx) : xn
             coor[2p] += dt * w
@@ -358,6 +365,8 @@ mutable struct Model{D, V, S, F, TS, SS}
     pressure::V                          # Pressure
     pressure_thermal_mesh::V             # Pressure_aux
     local_velocity_advection::V          # local_V (da_advection)
+    local_velocity_start::V              # RK4: Veloc on da_advection
+    local_velocity_end::V                # RK4: Veloc_fut on da_advection
     local_temperature::V                 # local_Temper
     local_pressure_thermal_mesh::V       # local_P_aux
     stokes::SS
@@ -399,17 +408,31 @@ function Model(m, layers; temperature, velocity, velocity_mask = nothing, locati
         pressure_to_nodes!(m, dv, dT, pr, stokes.local_pressure, pn)
     end
     return Model(m, layers, ViscosityRange(m), dv, dT, da, swarm, cell, MeshFields(dT), T, V, Vn, zero_vec(dv), pr, pn,
-        LibPETSc.DMCreateLocalVector(P, da), LibPETSc.DMCreateLocalVector(P, dT), LibPETSc.DMCreateLocalVector(P, dT),
+        LibPETSc.DMCreateLocalVector(P, da), LibPETSc.DMCreateLocalVector(P, da), LibPETSc.DMCreateLocalVector(P, da),
+        LibPETSc.DMCreateLocalVector(P, dT), LibPETSc.DMCreateLocalVector(P, dT),
         stokes, ThermalSolver(m, dT, dv, T), false, 0.0, 0.0, 0, (0.0, -m.domain_depth))
 end
 
-function particles!(s::Model, dt; move = false)
+function particles!(s::Model, dt; move = false, runge_kutta_4 = false)
     global_to_local(s.da_advection, s.velocity_advection, s.local_velocity_advection)
     global_to_local(s.da_Thermal, s.temperature, s.local_temperature)
     global_to_local(s.da_Thermal, s.pressure_thermal_mesh, s.local_pressure_thermal_mesh)
-    update = s.m.dimensions == 3 ? update_particles3! : update_particles!
-    s.shallowest_melt = update(s.m, s.range, s.layers, s.particle_swarm, s.da_advection, s.local_velocity_advection,
-        s.da_Thermal, s.local_temperature, s.local_pressure_thermal_mesh, dt; move)
+    args = (s.m, s.range, s.layers, s.particle_swarm, s.da_advection, s.local_velocity_advection,
+        s.da_Thermal, s.local_temperature, s.local_pressure_thermal_mesh, dt)
+    s.shallowest_melt = if s.m.dimensions == 3
+        update_particles3!(args...; move)
+    elseif runge_kutta_4
+        update_particles!(args...; move, runge_kutta_4 = runge_kutta_4_velocities!(s))
+    else
+        update_particles!(args...; move)
+    end
+end
+
+"Local Veloc (t_n) and Veloc_fut (t_n+1) on da_advection, for the RK4 stages."
+function runge_kutta_4_velocities!(s::Model)
+    global_to_local(s.da_advection, s.velocity, s.local_velocity_start)
+    global_to_local(s.da_advection, s.velocity_next, s.local_velocity_end)
+    return (s.local_velocity_start, s.local_velocity_end)
 end
 
 "One assembly and solve (build_veloc + solve_veloc)."
@@ -520,12 +543,25 @@ function rescale_velocity!(s::Model, scale)
     s.m.initial_dynamic_range && s.m.max_viscosity > s.m.min_viscosity && ramp_velocity!(s)
 end
 
-"One time step: temperature, velocity and advection (4 Euler substeps, as in the C++ code)."
+"""
+One time step: temperature, velocity and advection, with 4 Euler substeps (velocity interpolated in time at the
+middle of each substep, as in the C++ code) or one RK4 step (RK4 = Runge-Kutta; velocity varying linearly in time
+from Veloc to Veloc_fut, and strain rate with the velocity at the middle of the step).
+"""
 function step!(s::Model; substeps = 4, surface = nothing)
     dt = s.time_step_seconds
     thermal_step!(s.thermal, s.temperature, s.velocity, s.velocity_next, s.fields.radiogenic_heat_field, s.fields.thermal_diffusivity_field, dt;
         melt_increment_field = s.m.use_magmatism ? s.fields.melt_increment_field : nothing)
     solve_velocity_total!(s)
+    if s.m.use_runge_kutta_4 && s.m.dimensions == 2
+        PETSc.with_local_array!(s.velocity_advection, s.velocity, s.velocity_next; write = (true, false, false)) do a, v0, v1
+            a .= 0.5 .* v1 .+ 0.5 .* v0
+        end
+        particles!(s, dt; move = true, runge_kutta_4 = true)
+        surface === nothing || advect_surface!(surface, s.m, s.da_advection, s.local_velocity_advection, dt;
+            runge_kutta_4 = runge_kutta_4_velocities!(s))
+        substeps = 0
+    end
     for c in 0:substeps-1
         f = (0.5 + c) / substeps
         PETSc.with_local_array!(s.velocity_advection, s.velocity, s.velocity_next; write = (true, false, false)) do a, v0, v1

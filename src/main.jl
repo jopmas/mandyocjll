@@ -5,8 +5,8 @@ using Printf
 function check_unsupported(d)
     on(k) = lowercase(get(d, k, "false")) in ("true", "on")
     bad = String[]
-    get(d, "RK4", "Euler") == "Euler" || push!(bad, "RK4")
     if parse(Int, get(d, "dimensions", "2")) == 3     # options the 3D C++ code does not have either
+        get(d, "RK4", "Euler") == "Euler" || push!(bad, "RK4 in 3D")
         on("magmatism") && push!(bad, "magmatism in 3D")
         (on("sp_surface_tracking") || on("sp_surface_processes")) && push!(bad, "surface tracking and processes in 3D")
         on("periodic_boundary") && push!(bad, "periodic_boundary in 3D")

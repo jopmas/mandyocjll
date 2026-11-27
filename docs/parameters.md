@@ -56,13 +56,18 @@ the scales are written to `dimensional_convertion.txt`, and `denok`, given in th
 
 These options stop the run (`options of param.txt not ported yet: ...`):
 
-- `RK4 = Runge-Kutta` (the RK4 of the C++ code is marked as not working; see the bugs document);
-- in 3D (`dimensions = 3`), as in the C++ code: `magmatism`, the surface tracking and processes, and
+- in 3D (`dimensions = 3`), as in the C++ code: `RK4 = Runge-Kutta`, `magmatism`, the surface tracking and processes, and
   `periodic_boundary`. `temperature_from_ascii = True` is required, and `export_lithology` and `print_step_files`
   are ignored.
 
 Ignored on purpose: `binary_output`, `checkered` and `plot_sediment` (outputs are zarr), `external_heat`, `surface_velocity` and
-`multigrid` and `aggradation_rate` (read but not used by the C++ code). The RK4 will be ported when it works in the C++ code.
+`multigrid` and `aggradation_rate` (read but not used by the C++ code).
+
+`RK4 = Runge-Kutta` (2D): one fourth-order Runge-Kutta step per time step instead of the 4 Euler substeps. The velocity
+varies linearly in time from `Veloc` (t_n) to `Veloc_fut` (t_n+1), the stages that leave the domain are wrapped
+(periodic) or stopped at the boundary, and they read the velocity of the advection mesh (stencil 2). T, P and the
+strain rate are taken at the position at t_n, with the velocity at the middle of the step. The surface is advected
+in the same way. Same scheme as `RK4` of mandyoc_jpm (branch `rk4`).
 
 Not ported:
 `T_initial` other than 0 and 1 (use `temperature_from_ascii`), `binary_output`, restart, and the per-step
