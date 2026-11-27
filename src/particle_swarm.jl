@@ -189,16 +189,31 @@ function keep_inside(m, x, z)
     return x, clamp(z, e - m.domain_depth, -e)
 end
 
+"Velocity at the time t_n + f*dt of the step: linear between V0 (t_n, Veloc) and V1 (t_n+1, Veloc_fut)."
+function velocity_in_time(m, V0, V1, x, z, f)
+    u0, w0 = interpolate_velocity(m, V0, x, z)
+    V1 === V0 && return u0, w0
+    u1, w1 = interpolate_velocity(m, V1, x, z)
+    return (1 - f) * u0 + f * u1, (1 - f) * w0 + f * w1
+end
+
+"""
+Mean velocity of the step by the fourth-order Runge-Kutta (x_n+1 = x_n + dt*v), with the velocity varying linearly
+in time from V0 (t_n) to V1 (t_n+1); V1 = V0 for a velocity constant in the step. V0 and V1 need ghosts for the
+stages in the neighbor element (da_advection, stencil 2).
+"""
+function runge_kutta_4_velocity(m, V0, V1, x, z, dt)
+    uA, wA = velocity_in_time(m, V0, V1, x, z, 0.0)
+    uB, wB = velocity_in_time(m, V0, V1, keep_inside(m, x + uA * dt / 2, z + wA * dt / 2)..., 0.5)
+    uC, wC = velocity_in_time(m, V0, V1, keep_inside(m, x + uB * dt / 2, z + wB * dt / 2)..., 0.5)
+    uD, wD = velocity_in_time(m, V0, V1, keep_inside(m, x + uC * dt, z + wC * dt)..., 1.0)
+    return (uA + 2uB + 2uC + uD) / 6, (wA + 2wB + 2wC + wD) / 6
+end
+
 function advect_coordinates!(m, coor, V, dt)
     for p in 1:length(coor)÷2
         x, z = coor[2p-1], coor[2p]
-        uA, wA = interpolate_velocity(m, V, x, z)                   # vxA, vzA
-        if m.use_runge_kutta_4
-            uB, wB = interpolate_velocity(m, V, keep_inside(m, x + uA * dt / 2, z + wA * dt / 2)...)
-            uC, wC = interpolate_velocity(m, V, keep_inside(m, x + uB * dt / 2, z + wB * dt / 2)...)
-            uD, wD = interpolate_velocity(m, V, keep_inside(m, x + uC * dt, z + wC * dt)...)
-            uA = (uA + 2uB + 2uC + uD) / 6; wA = (wA + 2wB + 2wC + wD) / 6
-        end
+        uA, wA = m.use_runge_kutta_4 ? runge_kutta_4_velocity(m, V, V, x, z, dt) : interpolate_velocity(m, V, x, z)
         # final position: particles crossing an open boundary leave, and DMSwarmMigrate removes them
         x += dt * uA
         coor[2p-1] = m.periodic_boundary ? mod(x, m.Lx) : x

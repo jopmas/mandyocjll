@@ -121,17 +121,25 @@ function update_surface_conditions!(sf::Surface, time_years, say)
 end
 
 "Moves the surface with the velocity of the substep (sp_move_surface_swarm_advection_2d)."
-function advect_surface!(sf::Surface2D, m, da_advection, local_velocity, dt)
+# runge_kutta_4 = (V0, V1): local velocities at t_n and t_n+1 on da_advection (RK4 instead of Euler)
+function advect_surface!(sf::Surface2D, m, da_advection, local_velocity, dt; runge_kutta_4 = nothing)
     xs, zs, _, xm, zm, _ = LibPETSc.DMDAGetCorners(petsclib, da_advection)
     dx, dz, e = element_size_x(m), element_size_z(m), m.boundary_offset
     shift = zeros(2length(sf.x))
-    PETSc.with_local_array!(local_velocity; write = false) do v
+    extra = runge_kutta_4 === nothing ? () : runge_kutta_4
+    PETSc.with_local_array!(local_velocity, extra...; write = false) do v, rk...
         V = local_view(da_advection, v, 2)
+        stages = map(a -> local_view(da_advection, a, 2), rk)
         for p in eachindex(sf.x)
             cx = sf.x[p] >= m.Lx ? m.Lx - e : sf.x[p] <= 0 ? e : sf.x[p]
             cz = sf.z[p] >= 0 ? -e : sf.z[p] <= -m.domain_depth ? -m.domain_depth + e : sf.z[p]
             i = min(trunc(Int, cx / dx), m.Nx - 2); k = min(trunc(Int, (cz + m.domain_depth) / dz), m.Nz - 2)
             xs <= i < xs + xm && zs <= k < zs + zm || continue          # the rank that owns the element
+            if !isempty(stages)
+                u, w = runge_kutta_4_velocity(m, stages..., cx, cz, dt)
+                shift[2p-1] = dt * u; shift[2p] = dt * w
+                continue
+            end
             rx = (cx - i * dx) / dx; rz = (cz - (-m.domain_depth + k * dz)) / dz
             shift[2p-1] = dt * linear_interpolation(rx, rz, V[1, i, k], V[1, i+1, k], V[1, i, k+1], V[1, i+1, k+1])
             shift[2p] = dt * linear_interpolation(rx, rz, V[2, i, k], V[2, i+1, k], V[2, i, k+1], V[2, i+1, k+1])

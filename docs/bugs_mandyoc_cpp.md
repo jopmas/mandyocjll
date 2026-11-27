@@ -18,7 +18,7 @@ Código analisado: `mandyoc_jpm`, commit `64dc7d1`. Foi compilado com PETSc 3.24
 | 2 | RK4 lê fora dos ghosts | RK4, 2D, em paralelo | Confirmado (SEGV) | Resolvido e testado |
 | 3 | `MPI_Bcast` de 8 bytes em variável de 4 | Em paralelo | Confirmado (ASan) | Não se aplica |
 | 4 | Contorno periódico aborta com 1 processo em x | Periódico | Confirmado | Resolvido e testado |
-| 5 | RK4 não move a superfície | RK4 com rastreamento da superfície | Por leitura | Ainda não implementado |
+| 5 | RK4 não move a superfície | RK4 com rastreamento da superfície | Por leitura | Resolvido e testado |
 | 6 | `local_divV` é perdido e vira `NULL` | Magmatismo | Por leitura | Ainda não implementado |
 | 7 | Peso do FSSA não é `theta_FSSA` (5 vezes maior com g = 10) | FSSA ativo (padrão), 2D | Confirmado | Resolvido e testado |
 | 8 | FSSA usa o `dRho` da montagem anterior | FSSA ativo (padrão), 2D | Confirmado | Resolvido e testado |
@@ -33,6 +33,8 @@ Código analisado: `mandyoc_jpm`, commit `64dc7d1`. Foi compilado com PETSc 3.24
 | 17 | Padrão de `viscosity_per_element` é uma opção removida | `param.txt` sem a chave | Por leitura | Interrompe com mensagem clara |
 
 O RK4 já é marcado como `not working yet!` em `header.h:50`, e todos os testes usam Euler. Os itens 1, 2 e 5 só afetam quem ativar `RK4 = Runge-Kutta`.
+No mandyoc_jpm (branch `rk4`), os itens 1, 2 e 5 foram corrigidos, e o RK4 passou a usar a velocidade variando no
+tempo (de `Veloc` a `Veloc_fut`) em vez de `Veloc_fut` nos quatro estágios. O Julia usa o mesmo esquema.
 
 \newpage
 
@@ -144,7 +146,7 @@ if (RK4==1){
 }
 ```
 
-Convém conferir como `sp_move_surface_swarm` integra no tempo. **Julia:** a superfície ainda não foi portada.
+Convém conferir como `sp_move_surface_swarm` integra no tempo. **Julia:** resolvido; a superfície usa o mesmo RK4 das partículas (com a velocidade variando no tempo).
 
 # 6. `local_divV` é perdido na inicialização do magmatismo
 
