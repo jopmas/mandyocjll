@@ -90,5 +90,6 @@ magmatism and the periodic boundary; in 3D the surface processes are only `diffu
 
 ## License
 
-The examples in `examples/` come from Mandyoc (see `examples/LICENSE_MANDYOC`). `sp_mode = fastscape` calls
-FastScapeLib (`Fastscapelib_jll`), distributed under the GNU GPL v3.
+BSD 3-Clause, as Mandyoc (see [LICENSE](LICENSE)). The examples in `examples/` come from Mandyoc (see
+`examples/LICENSE_MANDYOC`). `sp_mode = fastscape` calls FastScapeLib (`Fastscapelib_jll`), distributed under the
+GNU GPL v3, which is installed as a dependency and is not part of this code.
