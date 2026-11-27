@@ -15,6 +15,12 @@ function create_mesh3d(m::ModelParameters, dof, width)
 end
 create_velocity_mesh3d(m) = create_mesh3d(m, 3, 1)                  # da_Veloc
 create_thermal_mesh3d(m) = create_mesh3d(m, 1, 1)                   # da_Thermal
+# Same partition as da_Veloc, with ghosts for the RK4 stages in the neighbor element (as create_advection_mesh).
+function create_advection_mesh3d(m, da_Veloc)
+    da = create_mesh3d(m, 3, m.advection_stencil_width)
+    @assert LibPETSc.DMDAGetCorners(P, da) == LibPETSc.DMDAGetCorners(P, da_Veloc)
+    return da
+end
 
 "Array with global indices [dof,] i, j, k, ghosts included."
 function local_view3(da, a, dof = 1)

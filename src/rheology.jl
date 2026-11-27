@@ -420,7 +420,7 @@ function particles!(s::Model, dt; move = false, runge_kutta_4 = false)
     args = (s.m, s.range, s.layers, s.particle_swarm, s.da_advection, s.local_velocity_advection,
         s.da_Thermal, s.local_temperature, s.local_pressure_thermal_mesh, dt)
     s.shallowest_melt = if s.m.dimensions == 3
-        update_particles3!(args...; move)
+        update_particles3!(args...; move, runge_kutta_4 = runge_kutta_4 ? runge_kutta_4_velocities!(s) : nothing)
     elseif runge_kutta_4
         update_particles!(args...; move, runge_kutta_4 = runge_kutta_4_velocities!(s))
     else
@@ -553,13 +553,12 @@ function step!(s::Model; substeps = 4, surface = nothing)
     thermal_step!(s.thermal, s.temperature, s.velocity, s.velocity_next, s.fields.radiogenic_heat_field, s.fields.thermal_diffusivity_field, dt;
         melt_increment_field = s.m.use_magmatism ? s.fields.melt_increment_field : nothing)
     solve_velocity_total!(s)
-    if s.m.use_runge_kutta_4 && s.m.dimensions == 2
+    if s.m.use_runge_kutta_4
         PETSc.with_local_array!(s.velocity_advection, s.velocity, s.velocity_next; write = (true, false, false)) do a, v0, v1
             a .= 0.5 .* v1 .+ 0.5 .* v0
         end
         particles!(s, dt; move = true, runge_kutta_4 = true)
-        surface === nothing || advect_surface!(surface, s.m, s.da_advection, s.local_velocity_advection, dt;
-            runge_kutta_4 = runge_kutta_4_velocities!(s))
+        surface === nothing || advect_surface_runge_kutta_4!(surface, s, dt)
         substeps = 0
     end
     for c in 0:substeps-1

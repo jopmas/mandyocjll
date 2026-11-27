@@ -85,7 +85,7 @@ Each test prints `RESULT OK` or `RESULT FAIL`; the full list is in [docs/validat
 
 ## Not ported yet
 
-RK4 (it does not work in the C++ code yet), restart, `T_initial` other than 0 and 1, and in 3D (as in the C++ code)
+Restart, `T_initial` other than 0 and 1, and in 3D (as in the C++ code)
 magmatism and the periodic boundary; in 3D the surface processes are only `diffusion` and `fastscape`.
 
 ## License

@@ -50,7 +50,7 @@ here, are in [bugs_mandyoc_cpp.pdf](bugs_mandyoc_cpp.pdf).
 | FSSA weight | the term is not weighted by `theta_FSSA` as intended (5 times larger with g = 10) and uses the `dRho` of the previous assembly (bugs 7 and 8) | consistent weight and the current `dRho`; `fssa_legacy = True` reproduces the C++ term |
 | Initial positions of the particles | depend on the number of ranks (`rand_r` per rank) | independent of the number of ranks |
 | Removal of particles | depends on the order of the particles in the rank (bug 15) | sorted by position: independent of the number of ranks |
-| RK4 | `break` stops the advection of the other particles; reads outside the ghosts (bugs 1, 2) | not available yet (the run stops) |
+| RK4 | `break` stops the advection of the other particles; reads outside the ghosts (bugs 1, 2); `Veloc_fut` in the four stages (corrected in mandyoc_jpm, branch `rk4`) | velocity linear in time from `Veloc` to `Veloc_fut`, stages kept inside the domain, 2D and 3D |
 | Advection mesh | stencil of `da_Veloc` | separate DMDA with stencil 2 |
 | Time step with dx ≠ dz | uses the wrong element size (bug 11) | corrected |
 | Nonlinear loop with zero initial velocity | stops at the first iteration (`Xi = nan`, bug 10) | continues |

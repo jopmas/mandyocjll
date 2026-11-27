@@ -344,6 +344,13 @@ function advect_surface!(sf::Surface3D, m, da_advection, local_velocity, dt)
     vec(sf.z) .= z0 .+ dt .* @view(v[3, :])
 end
 
+# Surface in the RK4 step: in 2D the points follow the same RK4 as the particles; in 3D the semi-Lagrangian scheme
+# above is kept, over the whole step, with the velocity at the middle of the step (s.velocity_advection).
+advect_surface_runge_kutta_4!(sf::Surface2D, s, dt) = advect_surface!(sf, s.m, s.da_advection, s.local_velocity_advection, dt;
+    runge_kutta_4 = runge_kutta_4_velocities!(s))
+advect_surface_runge_kutta_4!(sf::Surface3D, s, dt) = (global_to_local(s.da_advection, s.velocity_advection,
+    s.local_velocity_advection); advect_surface!(sf, s.m, s.da_advection, s.local_velocity_advection, dt))
+
 "Diffusion of the surface (sp_d_c, m2/s): explicit, with the edges kept at the height of their neighbors, as in 2D."
 function diffuse_surface3!(sf::Surface3D, dt)
     z = sf.z; nx, ny = size(z); dxs, dys = sf.x[2] - sf.x[1], sf.y[2] - sf.y[1]

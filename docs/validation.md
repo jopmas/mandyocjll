@@ -20,6 +20,7 @@ julia --project=. test/mpirun.jl 4 test_particle_control.jl native
 julia --project=. test/mpirun.jl 4 test_thermal3d.jl
 julia --project=. test/mpirun.jl 4 test_stokes3d.jl
 julia --project=. test/mpirun.jl 4 test_surface.jl
+julia --project=. test/test_runge_kutta_4.jl
 julia --project=. test/test_rheology.jl <mandyoc>/src <petsc>/include
 julia --project=. test/mpirun.jl 1 van_keken.jl 81 6 300
 ```
@@ -34,6 +35,7 @@ Each test prints `RESULT OK` or `RESULT FAIL`:
 | `test_open_boundary.jl` | particles leaving at an open boundary | exact count, positions 1e-10 m |
 | `test_particle_control.jl` | particles per element and layers after adding and removing | within the limits, same hash for any number of ranks |
 | `test_surface.jl` | surface moved by a prescribed velocity (uniform horizontal, vertical varying in x and y) in 2D and 3D, against the exact height; steady river profile of FastScape with uniform uplift, in the 2D strip and on a 3D grid, against the exact discrete profile | surface within 30 m of an uplift of 3 km (interpolation in space), the same in 2D and 3D and with 1, 2 and 4 ranks; river profile 5e-15 |
+| `test_runge_kutta_4.jl` | one RK4 step of a rigid rotation whose angular velocity grows linearly in time, in 2D and 3D (no PETSc) | error order 5.04 for one step (global order 4); Euler 2.00 |
 | `test_rheology.jl` | viscosity of the 13 rheologies against the C++ function (compiled from the Mandyoc source) | 1e-14 |
 | `van_keken.jl` | van Keken et al. (1997), case 1a | vrms peak 0.003103 (C++: 0.003111) |
 

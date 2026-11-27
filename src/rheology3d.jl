@@ -61,12 +61,48 @@ function create_particle_swarm3d(m::ModelParameters, da_Veloc; init)
     return swarm, cell_dm
 end
 
-# ---- moveSwarm in 3D: T, P, strain, viscosity and (Euler) position --------------------
-function update_particles3!(m, range, layers, swarm, da_Veloc, local_velocity, da_Thermal, local_temperature,
-    local_pressure_thermal_mesh, dt; move = false)
+# ---- RK4 in 3D -----------------------------------------------------------------------------
+"Velocity at (x, y, z), kept inside the domain as the particles (locate3); V from local_view3 of da_advection."
+function interpolate_velocity3(m, V, x, y, z)
+    i, j, k, rx, ry, rz, _ = locate3(m, x, y, z)
+    w8 = trilinear_weights(rx, ry, rz); nodes = element_nodes3(i, j, k)
+    return ntuple(c -> sum(w8[q] * V[c, nodes[q]...] for q in 1:8), 3)
+end
+
+"Velocity at the time t_n + f*dt of the step: linear between V0 (t_n, Veloc) and V1 (t_n+1, Veloc_fut)."
+function velocity_in_time3(m, V0, V1, x, y, z, f)
+    a = interpolate_velocity3(m, V0, x, y, z)
+    V1 === V0 && return a
+    b = interpolate_velocity3(m, V1, x, y, z)
+    return (1 - f) .* a .+ f .* b
+end
+
+"""
+Mean velocity of the step by the fourth-order Runge-Kutta in 3D (x_n+1 = x_n + dt*v), with the velocity varying
+linearly in time from V0 (t_n) to V1 (t_n+1). A stage outside the domain is stopped at the boundary (locate3); V0 and
+V1 need the ghosts of da_advection (stencil 2) for the stages in the neighbor element.
+"""
+function runge_kutta_4_velocity3(m, V0, V1, x, y, z, dt)
+    A = velocity_in_time3(m, V0, V1, x, y, z, 0.0)
+    B = velocity_in_time3(m, V0, V1, x + A[1] * dt / 2, y + A[2] * dt / 2, z + A[3] * dt / 2, 0.5)
+    C = velocity_in_time3(m, V0, V1, x + B[1] * dt / 2, y + B[2] * dt / 2, z + B[3] * dt / 2, 0.5)
+    D = velocity_in_time3(m, V0, V1, x + C[1] * dt, y + C[2] * dt, z + C[3] * dt, 1.0)
+    return (A .+ 2 .* B .+ 2 .* C .+ D) ./ 6
+end
+
+# ---- moveSwarm in 3D: T, P, strain, viscosity and (Euler or RK4) position -------------
+"""
+As update_particles! in 2D: Euler with `local_velocity`, or RK4 with `runge_kutta_4 = (V0, V1)`, the local velocities
+at the start and at the end of the step; all from `da_advection`.
+"""
+function update_particles3!(m, range, layers, swarm, da_advection, local_velocity, da_Thermal, local_temperature,
+    local_pressure_thermal_mesh, dt; move = false, runge_kutta_4 = nothing)
     dx, dy, dz = element_size_x(m), element_size_y(m), element_size_z(m)
-    PETSc.with_local_array!(local_velocity, local_temperature, local_pressure_thermal_mesh; write = false) do v, t, pr
-        V, T, Pn = local_view3(da_Veloc, v, 3), local_view3(da_Thermal, t), local_view3(da_Thermal, pr)
+    e_b = m.boundary_offset
+    extra = runge_kutta_4 === nothing ? () : runge_kutta_4
+    PETSc.with_local_array!(local_velocity, local_temperature, local_pressure_thermal_mesh, extra...; write = false) do v, t, pr, rk...
+        V, T, Pn = local_view3(da_advection, v, 3), local_view3(da_Thermal, t), local_view3(da_Thermal, pr)
+        stages = isempty(rk) ? nothing : map(a -> local_view3(da_advection, a, 3), rk)
         with_field(swarm, PIC_COORDINATES, Float64) do coor
         with_field(swarm, "layer", PInt) do layer
         with_field(swarm, "geoq_fac", Float64) do viscosity
@@ -90,10 +126,14 @@ function update_particles3!(m, range, layers, swarm, da_Veloc, local_velocity, d
                 end
                 mean = (e[1] + e[2] + e[3]) / 3
                 e2 = sqrt(((e[1] - mean)^2 + (e[2] - mean)^2 + (e[3] - mean)^2 + (e[4]^2 + e[5]^2 + e[6]^2) / 2) / 2)
-                if move
+                if move && stages === nothing
                     coor[3p-2] += dt * sum(w8[q] * V[1, nodes[q]...] for q in 1:8)
                     coor[3p-1] += dt * sum(w8[q] * V[2, nodes[q]...] for q in 1:8)
                     coor[3p] += dt * sum(w8[q] * V[3, nodes[q]...] for q in 1:8)
+                elseif move        # RK4 from the position at t_n (inside the domain); T, P and strain rate stay there
+                    x0 = clamp(coor[3p-2], e_b, m.Lx - e_b); y0 = clamp(coor[3p-1], e_b, m.Ly - e_b)
+                    u = runge_kutta_4_velocity3(m, stages..., x0, y0, z, dt)
+                    coor[3p-2] += dt * u[1]; coor[3p-1] += dt * u[2]; coor[3p] += dt * u[3]
                 end
                 strain[p] += dt * e2
                 strain_rate[p] = e2
@@ -279,7 +319,7 @@ end
 
 # ---- model ------------------------------------------------------------------------------------
 function Model3D(m, layers; temperature, velocity, velocity_mask = nothing, initial_strain = (x, y, z, layer) -> 0.0)
-    dv, dT = create_velocity_mesh3d(m), create_thermal_mesh3d(m)
+    dv, dT = create_velocity_mesh3d(m), create_thermal_mesh3d(m); da = create_advection_mesh3d(m, dv)
     n = size(layers.interface_depths, 2)
     function layer_at(x, y, z, id)
         i = clamp(trunc(Int, x / element_size_x(m)), 0, m.Nx - 2); rx = x / element_size_x(m) - i
@@ -311,9 +351,10 @@ function Model3D(m, layers; temperature, velocity, velocity_mask = nothing, init
         lithostatic_pressure3!(m, layers, dv, pr)
         pressure_to_nodes3!(m, dv, dT, pr, stokes.local_pressure, pn)
     end
-    # the velocity mesh is also the advection mesh (stencil 1: the Euler advection does not need more)
-    return Model(m, layers, ViscosityRange(m), dv, dT, dv, swarm, cell, MeshFields(dT), T, V, Vn, zero_vec(dv), pr, pn,
-        LibPETSc.DMCreateLocalVector(P, dv), LibPETSc.DMCreateLocalVector(P, dT), LibPETSc.DMCreateLocalVector(P, dT),
+    # advection mesh with stencil 2 (RK4 stages), as in 2D; the local velocities of the advection and of RK4 use it
+    return Model(m, layers, ViscosityRange(m), dv, dT, da, swarm, cell, MeshFields(dT), T, V, Vn, zero_vec(dv), pr, pn,
+        LibPETSc.DMCreateLocalVector(P, da), LibPETSc.DMCreateLocalVector(P, da), LibPETSc.DMCreateLocalVector(P, da),
+        LibPETSc.DMCreateLocalVector(P, dT), LibPETSc.DMCreateLocalVector(P, dT),
         stokes, ThermalSolver3D(m, dT, dv, T), false, 0.0, 0.0, 0, (0.0, -m.domain_depth))
 end
 
